@@ -301,26 +301,26 @@ def generate_dungeon():
             for j in range(new_room.y1, new_room.y2):
                 dungeon[j][i] = 1
         if rooms:
-            prev_center = rooms[-1].center
-            new_center = new_room.center
-            if random.randint(0, 1):
-                # Horizontal corridor from prev_center.x to new_center.x at row = prev_center.y
+            prev_center = rooms[-1].center   # (prev_x, prev_y)
+            new_center = new_room.center        # (new_x, new_y)
+            if random.randint(0,1):
+                # Horizontal corridor along row = prev_y
                 for x_corr in range(min(prev_center[0], new_center[0]), max(prev_center[0], new_center[0]) + 1):
                     dungeon[prev_center[1]][x_corr] = 1
-                # Vertical corridor from prev_center.y to new_center.y at column = new_center.x
+                # Vertical corridor along column = new_x
                 for y_corr in range(min(prev_center[1], new_center[1]), max(prev_center[1], new_center[1]) + 1):
                     dungeon[y_corr][new_center[0]] = 1
             else:
-                # Vertical corridor from prev_center.y to new_center.y at column = prev_center.x
+                # Vertical corridor along column = prev_x
                 for y_corr in range(min(prev_center[1], new_center[1]), max(prev_center[1], new_center[1]) + 1):
                     dungeon[y_corr][prev_center[0]] = 1
-                # Horizontal corridor from prev_center.x to new_center.x at row = new_center.y
+                # Horizontal corridor along row = new_y
                 for x_corr in range(min(prev_center[0], new_center[0]), max(prev_center[0], new_center[0]) + 1):
                     dungeon[new_center[1]][x_corr] = 1
         rooms.append(new_room)
     return dungeon, rooms
 
-# === TensorFlow Model Creation Functions (Input dimension now 12) ===
+# === TensorFlow Model Creation Functions (Input dim = 12) ===
 def create_drone_model():
     model = Sequential([
         Input(shape=(12,)),
@@ -406,14 +406,14 @@ class Player:
 class Drone:
     def __init__(self, x, y):
         self.x = x; self.y = y
-        directions = [(dx, dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if dx or dy]
+        directions = [(dx, dy) for dx in [-1,0,1] for dy in [-1,0,1] if dx or dy]
         self.current_dx, self.current_dy = random.choice(directions)
         self.direction_timer = random.uniform(1.5, 3.0)
         self.failed_moves = 0
     def update_random(self, dt, dungeon, drones):
         self.direction_timer -= dt
         if self.direction_timer <= 0:
-            directions = [(dx, dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if dx or dy]
+            directions = [(dx, dy) for dx in [-1,0,1] for dy in [-1,0,1] if dx or dy]
             self.current_dx, self.current_dy = random.choice(directions)
             self.direction_timer = random.uniform(1.5, 3.0)
         new_x = self.x + self.current_dx * DRONE_SPEED * dt
@@ -425,24 +425,32 @@ class Drone:
             self.direction_timer = 0
             return
         self.x, self.y = new_x, new_y
-    def update_nn(self, dt, dungeon, player, drones, model):
-        other_drones = np.array([[d.x, d.y] for d in drones if d is not self], dtype=np.float32)
-        sensor_vec = get_drone_sensor_vector(self.x, self.y, dungeon, (player.x, player.y), other_drones)
-        output = model(sensor_vec.reshape(1, -1)).numpy()[0]
-        dx, dy = output
+    # We'll remove the per-drone update_nn in favor of a batch update.
+    def draw(self, screen):
+        pygame.draw.circle(screen, COLOR_DRONE, (int(self.x), int(self.y)), DRONE_RADIUS)
+
+# === Batch Update for Drones ===
+def batch_update_drones(drones, dt, dungeon, player, drone_model):
+    sensor_list = []
+    for i, drone in enumerate(drones):
+        others = np.array([[d.x, d.y] for j, d in enumerate(drones) if j != i], dtype=np.float32)
+        sensor_vec = get_drone_sensor_vector(drone.x, drone.y, dungeon, (player.x, player.y), others)
+        sensor_list.append(sensor_vec)
+    sensor_batch = np.stack(sensor_list, axis=0)
+    outputs = drone_model.predict(sensor_batch, verbose=0)
+    for i, drone in enumerate(drones):
+        dx, dy = outputs[i]
         norm = math.hypot(dx, dy)
         if norm:
             dx /= norm; dy /= norm
-        new_x = self.x + dx * DRONE_SPEED * dt
-        new_y = self.y + dy * DRONE_SPEED * dt
+        new_x = drone.x + dx * DRONE_SPEED * dt
+        new_y = drone.y + dy * DRONE_SPEED * dt
         if collides_with_walls_numba(new_x, new_y, DRONE_RADIUS, dungeon):
-            self.failed_moves += 1
-            return
-        if any(distance((new_x, new_y), (d.x, d.y)) < DRONE_RADIUS*2 for d in drones if d is not self):
-            return
-        self.x, self.y = new_x, new_y
-    def draw(self, screen):
-        pygame.draw.circle(screen, COLOR_DRONE, (int(self.x), int(self.y)), DRONE_RADIUS)
+            drone.failed_moves += 1
+            continue
+        if any(distance((new_x, new_y), (d.x, d.y)) < DRONE_RADIUS*2 for j, d in enumerate(drones) if j != i):
+            continue
+        drone.x, drone.y = new_x, new_y
 
 # === Level Setup ===
 def new_level():
@@ -483,7 +491,7 @@ def new_level():
     return dungeon_np, player, drones, exit_rect, player_start
 
 # === Simulation Function for Genetic Evaluation ===
-def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0, drone_penalty=0.5,
+def simulate_game(player_model, drone_model, dt_sim=0.2, max_time=60.0, drone_penalty=0.5,
                   player_progress_scale=1.0, drone_distance_scale=0.1):
     dungeon, player, drones, exit_rect, player_start = new_level()
     goal = (exit_rect.x+TILE_SIZE/2, exit_rect.y+TILE_SIZE/2)
@@ -494,8 +502,7 @@ def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0, drone_pe
     min_distance = initial_distance
     while t < max_time:
         player.update_nn(dt_sim, dungeon, drones, goal, player_model)
-        for drone in drones:
-            drone.update_nn(dt_sim, dungeon, player, drones, drone_model)
+        batch_update_drones(drones, dt_sim, dungeon, player, drone_model)
         cur_distance = distance((player.x, player.y), goal)
         if cur_distance < min_distance:
             min_distance = cur_distance
@@ -534,11 +541,8 @@ def evaluate_candidate(args):
     return simulate_game(p_model, d_model, dt_sim, max_time, drone_penalty)
 
 # === Genetic Algorithm Training Mode ===
-def run_training_mode_genetic():
-    n = 10    # population size
-    m = 2     # number of best models to select
-    num_epochs = 10
-    dt_sim = 0.1
+def run_training_mode_genetic(n, m, num_epochs, parallel_evaluation=True):
+    dt_sim = 0.2
     max_time = 60.0
     base_penalty = BASE_DRONE_WALL_PENALTY
 
@@ -554,8 +558,14 @@ def run_training_mode_genetic():
                               player_population[i].get_weights(),
                               drone_population[i].get_weights(),
                               dt_sim, max_time, current_penalty))
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            results = list(executor.map(evaluate_candidate, args_list))
+        if parallel_evaluation:
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                results = list(executor.map(evaluate_candidate, args_list))
+        else:
+            results = []
+            for candidate, arg in enumerate(args_list):
+                results.append(evaluate_candidate(arg))
+                print (f"Evaluated candidate {candidate+1}/{n}")
         player_fitnesses = [res[0] for res in results]
         drone_fitnesses = [res[1] for res in results]
         sim_times = [res[2] for res in results]
@@ -598,10 +608,10 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
             player.update_nn(dt, dungeon, drones, goal, best_player_model)
         else:
             player.update_manual(dt, dungeon)
-        for drone in drones:
-            if USE_DRONE_NN:
-                drone.update_nn(dt, dungeon, player, drones, best_drone_model)
-            else:
+        if USE_DRONE_NN:
+            batch_update_drones(drones, dt, dungeon, player, best_drone_model)
+        else:
+            for drone in drones:
                 drone.update_random(dt, dungeon, drones)
         if exit_rect.collidepoint(float(player.x), float(player.y)):
             dungeon, player, drones, exit_rect, player_start = new_level()
@@ -623,11 +633,14 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
 
 # === Main Entry Point ===
 def main():
-    TRAINING_MODE = True
+    TRAINING_MODE = True  # Set to True to run genetic training; False for manual mode.
+    USE_PLAYER_NN = False
     USE_DRONE_NN = True
-    USE_PLAYER_NN = True
     if TRAINING_MODE:
-        run_training_mode_genetic()
+        n = 10  # population size (adjust as needed)
+        m = 2  # number of best models to select
+        num_epochs = 10
+        run_training_mode_genetic(n, m, num_epochs, parallel_evaluation=False)
     else:
         run_manual_mode(USE_PLAYER_NN, USE_DRONE_NN)
 
