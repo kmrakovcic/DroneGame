@@ -557,11 +557,13 @@ def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0, drone_pe
                   player_progress_scale=1.0, drone_distance_scale=0.1):
     dungeon, player, drones, exit_rect, player_start = new_level()
     goal = (exit_rect.x + TILE_SIZE / 2, exit_rect.y + TILE_SIZE / 2)
+    avg_player_drone_distance_start = np.mean([distance((player.x, player.y),
+                                                        (d.x, d.y)) for d in drones])
+    player_exit_distance_start = distance((player.x, player.y), goal)
     t = 0.0
     player_reached_exit = False
     player_caught = False
-    initial_distance = distance((player.x, player.y), goal)
-    min_distance = initial_distance
+    min_distance = player_exit_distance_start
     while t < max_time:
         player.update_nn(dt_sim, dungeon, drones, goal, player_model)
         for drone in drones:
@@ -579,13 +581,18 @@ def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0, drone_pe
         if player_caught:
             break
         t += dt_sim
+    avg_player_drone_distance_end = np.mean([distance((player.x, player.y),
+                                                      (d.x, d.y)) for d in drones])
+    player_exit_distance_end = min_distance
+    avg_player_drone_distance = (avg_player_drone_distance_start - avg_player_drone_distance_end) / avg_player_drone_distance_start
+    player_exit_distance = (player_exit_distance_start - player_exit_distance_end) / player_exit_distance_start
     drone_fitness, player_fitness = calculate_fitness(player, drones, t, player_reached_exit, player_caught,
-                                                        SCREEN_WIDTH, SCREEN_HEIGHT, max_time, min_distance)
+                                                        SCREEN_WIDTH, SCREEN_HEIGHT, max_time, avg_player_drone_distance, player_exit_distance)
     return player_fitness, drone_fitness, t
 
 
 def calculate_fitness(player, drones, t, player_reached_exit, player_caught,
-                      screen_width, screen_height, max_time, min_distance):
+                      screen_width, screen_height, max_time, avg_player_drone_distance, player_exit_distance):
     player_fitness = 0
     drone_fitness = 0
     if player_reached_exit:
@@ -597,12 +604,9 @@ def calculate_fitness(player, drones, t, player_reached_exit, player_caught,
         drone_fitness += 50 + 50 * (max_time - t) / max_time
 
     max_screen_distance = distance((0, 0), (screen_width, screen_height))
-    avg_player_drone_distance = np.mean([distance((player.x, player.y),
-                                                  (d.x, d.y)) for d in drones]) / max_screen_distance
     player_fitness += avg_player_drone_distance * 50
     drone_fitness += -avg_player_drone_distance * 50
 
-    player_exit_distance = max_screen_distance / min_distance
     player_fitness += player_exit_distance * 50
     drone_fitness += -player_exit_distance * 50
 
