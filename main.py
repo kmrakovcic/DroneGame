@@ -607,8 +607,8 @@ def calculate_fitness(player, drones, t, player_reached_exit, player_caught,
     player_fitness += avg_player_drone_distance * 50
     drone_fitness += -avg_player_drone_distance * 50
 
-    player_fitness += player_exit_distance * 50
-    drone_fitness += -player_exit_distance * 50
+    player_fitness += -player_exit_distance * 50
+    drone_fitness += player_exit_distance * 50
 
     player_distance_covered = player.distance_covered / max_screen_distance
     drone_distance_covered = np.mean([d.distance_covered for d in drones]) / max_screen_distance
