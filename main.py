@@ -54,9 +54,28 @@ def circle_rect_collision_numba(cx, cy, radius, left, top, right, bottom):
     closest_y = max(top, min(cy, bottom))
     return ((cx - closest_x) ** 2 + (cy - closest_y) ** 2) < (radius ** 2)
 
+@numba.njit
+def circle_rect_collision_numba_direction(cx, cy, radius, left, top, right, bottom):
+    # Compute the closest point on the rectangle to the circle center.
+    closest_x = max(left, min(cx, right))
+    closest_y = max(top, min(cy, bottom))
+
+    # Compute the squared distance from the circle center to that point.
+    dx = cx - closest_x
+    dy = cy - closest_y
+    if dx * dx + dy * dy >= radius * radius:
+        return 0  # No collision
+
+    # Determine the collision axis by comparing the absolute displacement.
+    if abs(dx) > abs(dy):
+        return 1  # 1 represents an x-axis collision.
+    else:
+        return 2  # 2 represents a y-axis collision.
+
 
 @numba.njit
 def collides_with_walls_numba_direction(x, y, radius, dungeon):
+    output = ""
     left = x - radius
     right = x + radius
     top = y - radius
@@ -67,16 +86,23 @@ def collides_with_walls_numba_direction(x, y, radius, dungeon):
     bottom_tile = int(bottom // TILE_SIZE)
     for ty in range(top_tile, bottom_tile + 1):
         for tx in range(left_tile, right_tile + 1):
-            if tx < 0 or tx >= MAP_WIDTH or ty < 0 or ty >= MAP_HEIGHT:
-                return "x"
+            if tx < 0 or tx >= MAP_WIDTH:
+                output += "x"
+            elif ty < 0 or ty >= MAP_HEIGHT:
+                output += "y"
             if dungeon[ty, tx] == 0:
                 t_left = tx * TILE_SIZE
                 t_top = ty * TILE_SIZE
                 t_right = t_left + TILE_SIZE
                 t_bottom = t_top + TILE_SIZE
-                if circle_rect_collision_numba(x, y, radius, t_left, t_top, t_right, t_bottom):
-                    return "y"
-    return "0"
+                collison = circle_rect_collision_numba_direction(x, y, radius, t_left, t_top, t_right, t_bottom)
+                if collison == 1:
+                    output += "x"
+                elif collison == 2:
+                    output += "y"
+    if output == "":
+        output = "0"
+    return output
 
 
 @numba.njit
@@ -456,9 +482,18 @@ class Player:
             dy /= norm
         new_x = self.x + dx * PLAYER_SPEED * dt
         new_y = self.y + dy * PLAYER_SPEED * dt
-        if not collides_with_walls_numba(new_x, new_y, PLAYER_RADIUS, dungeon):
-            self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
-            self.x, self.y = new_x, new_y
+        collide = collides_with_walls_numba_direction(new_x, new_y, PLAYER_RADIUS, dungeon)
+        print (collide)
+        if "x" in collide:
+            #return
+            new_x = self.x - dx * PLAYER_SPEED * dt
+            #new_y = self.y - dy * PLAYER_SPEED * dt
+        if "y" in collide:
+            #return
+            new_y = self.y - dy * PLAYER_SPEED * dt
+            #new_x = self.x - dx * PLAYER_SPEED * dt
+        self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
+        self.x, self.y = new_x, new_y
 
     def draw(self, screen):
         pygame.draw.circle(screen, COLOR_PLAYER, (int(self.x), int(self.y)), PLAYER_RADIUS)
@@ -502,10 +537,19 @@ class Drone:
         dy /= norm
         new_x = self.x + dx * DRONE_SPEED * dt
         new_y = self.y + dy * DRONE_SPEED * dt
-        if collides_with_walls_numba(new_x, new_y, DRONE_RADIUS, dungeon):
-            return
+        collide = collides_with_walls_numba_direction(new_x, new_y, PLAYER_RADIUS, dungeon)
+        print (collide)
+        if "x" in collide:
+            #return
+            new_x = self.x - dx * PLAYER_SPEED * dt
+            #new_y = self.y - dy * PLAYER_SPEED * dt
+        if "y" in collide:
+            #return
+            new_y = self.y - dy * PLAYER_SPEED * dt
+            #new_x = self.x - dx * PLAYER_SPEED * dt
         if any(distance((new_x, new_y), (d.x, d.y)) < DRONE_RADIUS * 2 for d in drones if d is not self):
-            return
+            new_x = self.x - dx * PLAYER_SPEED * dt
+            new_y = self.y - dy * PLAYER_SPEED * dt
         self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
         self.x, self.y = new_x, new_y
 
@@ -520,6 +564,7 @@ def batch_update_drones(drones, dt, dungeon, player, models):
     outputs = models(sensor_vectors).numpy()
     for i, drone in enumerate(drones):
         drone.update_nn(dt, dungeon, player, drones, models, outputs[i])
+    return outputs
 
 
 # === Level Setup ===
@@ -563,8 +608,7 @@ def new_level():
 
 
 # === Simulation Function for Genetic Evaluation ===
-def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0, drone_penalty=0.5,
-                  player_progress_scale=1.0, drone_distance_scale=0.1):
+def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0):
     dungeon, player, drones, exit_rect, player_start = new_level()
     goal = (exit_rect.x + TILE_SIZE / 2, exit_rect.y + TILE_SIZE / 2)
     avg_player_drone_distance_start = np.mean([distance((player.x, player.y),
@@ -577,8 +621,6 @@ def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0, drone_pe
     while t < max_time:
         player.update_nn(dt_sim, dungeon, drones, goal, player_model)
         batch_update_drones(drones, dt_sim, dungeon, player, drone_model)
-        #for drone in drones:
-        #    drone.update_nn(dt_sim, dungeon, player, drones, drone_model)
         cur_distance = distance((player.x, player.y), goal)
         if cur_distance < min_distance:
             min_distance = cur_distance
@@ -642,29 +684,21 @@ def evaluate_candidate(args):
 
 # === Genetic Algorithm Training Mode ===
 def run_training_mode_genetic():
-    n = 3  # population size
-    m = 1  # number of best models to select
+    n = 300  # population size
+    m = 30  # number of best models to select
     num_epochs = 400
     dt_sim = 0.033  # 30 FPS
     max_time = 60.0
     base_penalty = BASE_DRONE_WALL_PENALTY
 
     # Dynamic mutation settings: start high, then decay.
-    initial_mutation_rate = 0.1
-    final_mutation_rate = 0.01
-    initial_mutation_strength = 0.05
-    final_mutation_strength = 0.01
+    mutation_rate = 0.1
+    mutation_strength = 0.05
 
     player_population = [create_player_model() for _ in range(n)]
     drone_population = [create_drone_model() for _ in range(n)]
 
     for epoch in range(num_epochs):
-        # Adjust drone wall penalty dynamically.
-        current_penalty = base_penalty * (1 + epoch / num_epochs)
-        # Linearly decay mutation rate/strength.
-        mutation_rate = initial_mutation_rate - (initial_mutation_rate - final_mutation_rate) * (epoch / num_epochs)
-        mutation_strength = initial_mutation_strength - (initial_mutation_strength - final_mutation_strength) * (
-                epoch / num_epochs)
         start_epoch = time.time()
         level = new_level()  # use the same level for all candidate evaluations this epoch
         args_list = []
@@ -729,7 +763,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
     dungeon, player, drones, exit_rect, player_start = new_level()
     running = True
     while running:
-        dt = clock.tick(30) / 1000.0
+        dt = clock.tick(1) / 1000.0
         for event in pygame.event.get():
             if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                 running = False
@@ -739,7 +773,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
         else:
             player.update_manual(dt, dungeon)
         if USE_DRONE_NN:
-            batch_update_drones(drones, dt, dungeon, player, best_drone_model)
+            outputs = batch_update_drones(drones, dt, dungeon, player, best_drone_model)
         else:
             for drone in drones:
                 drone.update_random(dt, dungeon, drones)
@@ -764,9 +798,9 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
 
 # === Main Entry Point ===
 def main():
-    TRAINING_MODE = True  # Set to True for genetic training; False for manual mode.
-    USE_PLAYER_NN = False
-    USE_DRONE_NN = True
+    TRAINING_MODE = False  # Set to True for genetic training; False for manual mode.
+    USE_PLAYER_NN = True
+    USE_DRONE_NN = False
     if TRAINING_MODE:
         run_training_mode_genetic()
     else:
