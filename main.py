@@ -46,36 +46,23 @@ USE_DRONE_NN = True
 # NEW: Flag to choose parallel or sequential evaluation.
 USE_PARALLEL_EVALUATION = True
 
-
 # === Numba-accelerated Functions ===
+
 @numba.njit
 def circle_rect_collision_numba(cx, cy, radius, left, top, right, bottom):
+    # Clamp the circle center to the rectangle boundaries.
     closest_x = max(left, min(cx, right))
     closest_y = max(top, min(cy, bottom))
+    # Test if the distance from (cx,cy) to the closest point is less than the radius.
     return ((cx - closest_x) ** 2 + (cy - closest_y) ** 2) < (radius ** 2)
 
+# --- New collision function ---
 @numba.njit
-def circle_rect_collision_numba_direction(cx, cy, radius, left, top, right, bottom):
-    # Compute the closest point on the rectangle to the circle center.
-    closest_x = max(left, min(cx, right))
-    closest_y = max(top, min(cy, bottom))
-
-    # Compute the squared distance from the circle center to that point.
-    dx = cx - closest_x
-    dy = cy - closest_y
-    if dx * dx + dy * dy >= radius * radius:
-        return 0  # No collision
-
-    # Determine the collision axis by comparing the absolute displacement.
-    if abs(dx) > abs(dy):
-        return 1  # 1 represents an x-axis collision.
-    else:
-        return 2  # 2 represents a y-axis collision.
-
-
-@numba.njit
-def collides_with_walls_numba_direction(x, y, radius, dungeon):
-    output = ""
+def collides_with_walls_numba(x, y, radius, dungeon):
+    """
+    Returns True if a circle at (x,y) with the given radius collides with any wall.
+    Walls are defined as dungeon tiles with value 0, or if (x,y) is out of bounds.
+    """
     left = x - radius
     right = x + radius
     top = y - radius
@@ -86,37 +73,21 @@ def collides_with_walls_numba_direction(x, y, radius, dungeon):
     bottom_tile = int(bottom // TILE_SIZE)
     for ty in range(top_tile, bottom_tile + 1):
         for tx in range(left_tile, right_tile + 1):
-            if tx < 0 or tx >= MAP_WIDTH:
-                output += "x"
-            elif ty < 0 or ty >= MAP_HEIGHT:
-                output += "y"
+            # Out-of-bound tiles count as walls.
+            if tx < 0 or tx >= MAP_WIDTH or ty < 0 or ty >= MAP_HEIGHT:
+                return True
             if dungeon[ty, tx] == 0:
                 t_left = tx * TILE_SIZE
                 t_top = ty * TILE_SIZE
                 t_right = t_left + TILE_SIZE
                 t_bottom = t_top + TILE_SIZE
-                collison = circle_rect_collision_numba_direction(x, y, radius, t_left, t_top, t_right, t_bottom)
-                if collison == 1:
-                    output += "x"
-                elif collison == 2:
-                    output += "y"
-    if output == "":
-        output = "0"
-    return output
-
-
-@numba.njit
-def collides_with_walls_numba(x, y, radius, dungeon):
-    if collides_with_walls_numba_direction(x, y, radius, dungeon) == "0":
-        return False
-    else:
-        return True
-
+                if circle_rect_collision_numba(x, y, radius, t_left, t_top, t_right, t_bottom):
+                    return True
+    return False
 
 # === Basic Helper Functions ===
 def distance(a, b):
     return math.hypot(a[0] - b[0], a[1] - b[1])
-
 
 def one_hot(index, length):
     vec = [0] * length
@@ -124,8 +95,9 @@ def one_hot(index, length):
         vec[index] = 1
     return vec
 
-
-# === Vectorized Sensor Functions for Drones (12-element sensor vector) ===
+# === (Unchanged) Sensor Functions for Drones and Player ===
+# [Keep your sensor functions as is...]
+# For brevity, these functions are unchanged:
 def get_left_sensor(x, y, dungeon, player_pos, drones_pos):
     tile_x = int(x // TILE_SIZE)
     tile_y = int(y // TILE_SIZE)
@@ -152,7 +124,6 @@ def get_left_sensor(x, y, dungeon, player_pos, drones_pos):
                 candidate = min_cand
                 sensor_type = 1.0
     return candidate, sensor_type
-
 
 def get_right_sensor(x, y, dungeon, player_pos, drones_pos):
     tile_x = int(x // TILE_SIZE)
@@ -181,7 +152,6 @@ def get_right_sensor(x, y, dungeon, player_pos, drones_pos):
                 sensor_type = 1.0
     return candidate, sensor_type
 
-
 def get_up_sensor(x, y, dungeon, player_pos, drones_pos):
     tile_x = int(x // TILE_SIZE)
     tile_y = int(y // TILE_SIZE)
@@ -208,7 +178,6 @@ def get_up_sensor(x, y, dungeon, player_pos, drones_pos):
                 candidate = min_cand
                 sensor_type = 1.0
     return candidate, sensor_type
-
 
 def get_down_sensor(x, y, dungeon, player_pos, drones_pos):
     tile_x = int(x // TILE_SIZE)
@@ -237,7 +206,6 @@ def get_down_sensor(x, y, dungeon, player_pos, drones_pos):
                 sensor_type = 1.0
     return candidate, sensor_type
 
-
 def get_drone_sensor_vector(x, y, dungeon, player_pos, drones_pos):
     left_d, left_t = get_left_sensor(x, y, dungeon, player_pos, drones_pos)
     right_d, right_t = get_right_sensor(x, y, dungeon, player_pos, drones_pos)
@@ -254,7 +222,6 @@ def get_drone_sensor_vector(x, y, dungeon, player_pos, drones_pos):
                               drone_pos_norm[0], drone_pos_norm[1],
                               player_pos_norm[0], player_pos_norm[1]], dtype=np.float32)
     return sensor_vector
-
 
 def get_player_sensor_vector_vectorized(x, y, dungeon, drones_pos, goal):
     tile_x = int(x // TILE_SIZE)
@@ -331,20 +298,18 @@ def get_player_sensor_vector_vectorized(x, y, dungeon, drones_pos, goal):
                               goal_norm[0], goal_norm[1]], dtype=np.float32)
     return sensor_vector
 
-
 # === Dungeon Generation Classes and Functions ===
 class Room:
     def __init__(self, x, y, w, h):
-        self.x1 = x;
-        self.y1 = y;
-        self.x2 = x + w;
+        self.x1 = x
+        self.y1 = y
+        self.x2 = x + w
         self.y2 = y + h
         self.center = ((self.x1 + self.x2) // 2, (self.y1 + self.y2) // 2)
 
     def intersects(self, other):
         return (self.x1 <= other.x2 and self.x2 >= other.x1 and
                 self.y1 <= other.y2 and self.y2 >= other.y1)
-
 
 def generate_dungeon():
     dungeon = [[0 for _ in range(MAP_WIDTH)] for _ in range(MAP_HEIGHT)]
@@ -372,35 +337,29 @@ def generate_dungeon():
                 for y_corr in range(min(prev_center[1], new_center[1]), max(prev_center[1], new_center[1]) + 1):
                     dungeon[y_corr][prev_center[0]] = 1
                 for x_corr in range(min(prev_center[0], new_center[0]), max(prev_center[0], new_center[0]) + 1):
-                    dungeon[new_center[1]][x_corr] = 1
+                    dungeon[new_room.center[1]][x_corr] = 1
         rooms.append(new_room)
     return dungeon, rooms
-
 
 # === TensorFlow Model Creation Functions (Input dim = 12) ===
 def create_drone_model():
     model = tf.keras.models.Sequential([
         tf.keras.layers.Input(shape=(12,)),
         tf.keras.layers.Dense(16, activation='relu'),
-        #tf.keras.layers.Dense(8, activation='relu'),
         tf.keras.layers.Dense(2, activation='tanh')
     ])
     model.compile(optimizer='adam', loss='mse')
     return model
 
-
 def create_player_model():
     model = tf.keras.models.Sequential([
         tf.keras.layers.Input(shape=(12,)),
         tf.keras.layers.Dense(16, activation='relu'),
-        #tf.keras.layers.Dense(8, activation='relu'),
         tf.keras.layers.Dense(2, activation='tanh')
     ])
-    #model.compile(optimizer='adam', loss='mse')
     return model
 
-
-# === Reproduction Functions with Dynamic Mutation Rates and Diversity Injection ===
+# === Reproduction Functions (Unchanged) ===
 def intermediate_crossover_models(parent1, parent2, create_model_fn, mutation_rate, mutation_strength):
     weights1 = parent1.get_weights()
     weights2 = parent2.get_weights()
@@ -415,22 +374,19 @@ def intermediate_crossover_models(parent1, parent2, create_model_fn, mutation_ra
     new_model.set_weights(new_weights)
     return new_model
 
-
-# === Reproduction Functions with Dynamic Mutation Rates and Diversity Injection ===
 def discrete_crossover_models(parent1, parent2, create_model_fn, mutation_rate, mutation_strength):
     weights1 = parent1.get_weights()
     weights2 = parent2.get_weights()
     new_weights = []
     for w1, w2 in zip(weights1, weights2):
         r = np.random.rand(*w1.shape) < 0.5
-        new_w = r * w1 + ~r * w2
+        new_w = r * w1 + (~r) * w2
         mutation_mask = np.random.rand(*new_w.shape) < mutation_rate
-        new_w = mutation_mask * np.random.randn(*new_w.shape) + ~mutation_mask * new_w
+        new_w = mutation_mask * np.random.randn(*new_w.shape) + (~mutation_mask) * new_w
         new_weights.append(new_w)
     new_model = create_model_fn()
     new_model.set_weights(new_weights)
     return new_model
-
 
 def generate_new_population(parents, n, create_model_fn, mutation_rate, mutation_strength):
     new_population = []
@@ -441,11 +397,10 @@ def generate_new_population(parents, n, create_model_fn, mutation_rate, mutation
         new_population.append(offspring)
     return new_population
 
-
 # === Game Entities ===
 class Player:
     def __init__(self, x, y):
-        self.x = x;
+        self.x = x
         self.y = y
         self.distance_covered = 0
 
@@ -462,46 +417,66 @@ class Player:
             dy += 1
         if dx or dy:
             norm = math.hypot(dx, dy)
-            dx /= norm;
-            dy /= norm
+            dx /= norm; dy /= norm
+            # Axis-separated movement:
             new_x = self.x + dx * PLAYER_SPEED * dt
+            if collides_with_walls_numba(new_x, self.y, PLAYER_RADIUS, dungeon):
+                new_x = self.x
             new_y = self.y + dy * PLAYER_SPEED * dt
-            if not collides_with_walls_numba(new_x, new_y, PLAYER_RADIUS, dungeon):
-                self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
-                self.x, self.y = new_x, new_y
+            if collides_with_walls_numba(self.x, new_y, PLAYER_RADIUS, dungeon):
+                new_y = self.y
+            self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
+            self.x, self.y = new_x, new_y
 
     def update_nn(self, dt, dungeon, drones, goal, model):
-        sensor_vec = get_player_sensor_vector_vectorized(self.x, self.y, dungeon,
-                                                         np.array([[d.x, d.y] for d in drones], dtype=np.float32),
-                                                         goal)
+        # Get sensor vector and NN output
+        sensor_vec = get_player_sensor_vector_vectorized(
+            self.x, self.y, dungeon,
+            np.array([[d.x, d.y] for d in drones], dtype=np.float32),
+            goal
+        )
         output = model(sensor_vec.reshape(1, -1)).numpy()[0]
-        dx, dy = output
-        norm = math.hypot(dx, dy)
+        # Compute velocity from output and scale by PLAYER_SPEED.
+        # (Make sure the NN outputs are nonzero; if zero, no movement occurs.)
+        norm = math.hypot(output[0], output[1])
         if norm:
-            dx /= norm;
-            dy /= norm
-        new_x = self.x + dx * PLAYER_SPEED * dt
-        new_y = self.y + dy * PLAYER_SPEED * dt
-        collide = collides_with_walls_numba_direction(new_x, new_y, PLAYER_RADIUS, dungeon)
-        print (collide)
-        if "x" in collide:
-            #return
-            new_x = self.x - dx * PLAYER_SPEED * dt
-            #new_y = self.y - dy * PLAYER_SPEED * dt
-        if "y" in collide:
-            #return
-            new_y = self.y - dy * PLAYER_SPEED * dt
-            #new_x = self.x - dx * PLAYER_SPEED * dt
+            vx = (output[0] / norm) * PLAYER_SPEED
+            vy = (output[1] / norm) * PLAYER_SPEED
+        else:
+            vx = vy = 0
+
+        # --- Horizontal Movement (x-axis) ---
+        new_x = self.x + vx * dt
+        if collides_with_walls_numba(new_x, self.y, PLAYER_RADIUS, dungeon):
+            # Bounce horizontally: reverse the x-velocity.
+            vx = -vx
+            new_x = self.x + vx * dt
+            # If still colliding after the bounce, cancel horizontal movement.
+            if collides_with_walls_numba(new_x, self.y, PLAYER_RADIUS, dungeon):
+                new_x = self.x
+                vx = 0
+
+        # --- Vertical Movement (y-axis) ---
+        new_y = self.y + vy * dt
+        if collides_with_walls_numba(self.x, new_y, PLAYER_RADIUS, dungeon):
+            # Bounce vertically: reverse the y-velocity.
+            vy = -vy
+            new_y = self.y + vy * dt
+            # If still colliding after the bounce, cancel vertical movement.
+            if collides_with_walls_numba(self.x, new_y, PLAYER_RADIUS, dungeon):
+                new_y = self.y
+                vy = 0
+
+        # Update the player's position and covered distance.
         self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
         self.x, self.y = new_x, new_y
 
     def draw(self, screen):
         pygame.draw.circle(screen, COLOR_PLAYER, (int(self.x), int(self.y)), PLAYER_RADIUS)
 
-
 class Drone:
     def __init__(self, x, y):
-        self.x = x;
+        self.x = x
         self.y = y
         directions = [(dx, dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if dx or dy]
         self.current_dx, self.current_dy = random.choice(directions)
@@ -526,46 +501,55 @@ class Drone:
         self.x, self.y = new_x, new_y
 
     def update_nn(self, dt, dungeon, player, drones, model, output=None):
-        # Do NOT batch the update; update each drone individually.
         if output is None:
             others = np.array([[d.x, d.y] for d in drones if d is not self], dtype=np.float32)
             sensor_vec = get_drone_sensor_vector(self.x, self.y, dungeon, (player.x, player.y), others)
             output = model(sensor_vec.reshape(1, -1)).numpy()[0]
-        dx, dy = output
-        norm = math.hypot(dx, dy)
-        dx /= norm;
-        dy /= norm
-        new_x = self.x + dx * DRONE_SPEED * dt
-        new_y = self.y + dy * DRONE_SPEED * dt
-        collide = collides_with_walls_numba_direction(new_x, new_y, PLAYER_RADIUS, dungeon)
-        print (collide)
-        if "x" in collide:
-            #return
-            new_x = self.x - dx * PLAYER_SPEED * dt
-            #new_y = self.y - dy * PLAYER_SPEED * dt
-        if "y" in collide:
-            #return
-            new_y = self.y - dy * PLAYER_SPEED * dt
-            #new_x = self.x - dx * PLAYER_SPEED * dt
+        norm = math.hypot(output[0], output[1])
+        if norm:
+            vx = (output[0] / norm) * DRONE_SPEED
+            vy = (output[1] / norm) * DRONE_SPEED
+        else:
+            vx = vy = 0
+
+        # --- Horizontal Movement ---
+        new_x = self.x + vx * dt
+        if collides_with_walls_numba(new_x, self.y, DRONE_RADIUS, dungeon):
+            vx = -vx  # bounce horizontally
+            new_x = self.x + vx * dt
+            if collides_with_walls_numba(new_x, self.y, DRONE_RADIUS, dungeon):
+                new_x = self.x
+                vx = 0
+
+        # --- Vertical Movement ---
+        new_y = self.y + vy * dt
+        if collides_with_walls_numba(self.x, new_y, DRONE_RADIUS, dungeon):
+            vy = -vy  # bounce vertically
+            new_y = self.y + vy * dt
+            if collides_with_walls_numba(self.x, new_y, DRONE_RADIUS, dungeon):
+                new_y = self.y
+                vy = 0
+
+        # Optionally: check for drone-drone collisions and cancel movement if needed.
         if any(distance((new_x, new_y), (d.x, d.y)) < DRONE_RADIUS * 2 for d in drones if d is not self):
-            new_x = self.x - dx * PLAYER_SPEED * dt
-            new_y = self.y - dy * PLAYER_SPEED * dt
+            new_x, new_y = self.x, self.y
+            vx = vy = 0
+
         self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
         self.x, self.y = new_x, new_y
 
     def draw(self, screen):
         pygame.draw.circle(screen, COLOR_DRONE, (int(self.x), int(self.y)), DRONE_RADIUS)
 
-
 def batch_update_drones(drones, dt, dungeon, player, models):
     sensor_vectors = np.array([get_drone_sensor_vector(d.x, d.y, dungeon, (player.x, player.y),
                                                        np.array([[o.x, o.y] for o in drones if o is not d],
-                                                                dtype=np.float32)) for d in drones], dtype=np.float32)
+                                                                dtype=np.float32))
+                               for d in drones], dtype=np.float32)
     outputs = models(sensor_vectors).numpy()
     for i, drone in enumerate(drones):
         drone.update_nn(dt, dungeon, player, drones, models, outputs[i])
     return outputs
-
 
 # === Level Setup ===
 def new_level():
@@ -599,20 +583,17 @@ def new_level():
                     if player_room.x1 <= tx < player_room.x2 and player_room.y1 <= ty < player_room.y2:
                         continue
                 tile_center = (tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2)
-                if distance(tile_center, player_start) > TILE_SIZE and not pygame.Rect(exit_rect).collidepoint(
-                        tile_center):
+                if distance(tile_center, player_start) > TILE_SIZE and not pygame.Rect(exit_rect).collidepoint(tile_center):
                     if not any(distance(tile_center, (d.x, d.y)) < TILE_SIZE for d in drones):
                         drones.append(Drone(tile_center[0], tile_center[1]))
                         break
     return dungeon_np, player, drones, exit_rect, player_start
 
-
 # === Simulation Function for Genetic Evaluation ===
 def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0):
     dungeon, player, drones, exit_rect, player_start = new_level()
     goal = (exit_rect.x + TILE_SIZE / 2, exit_rect.y + TILE_SIZE / 2)
-    avg_player_drone_distance_start = np.mean([distance((player.x, player.y),
-                                                        (d.x, d.y)) for d in drones])
+    avg_player_drone_distance_start = np.mean([distance((player.x, player.y), (d.x, d.y)) for d in drones])
     player_exit_distance_start = distance((player.x, player.y), goal)
     t = 0.0
     player_reached_exit = False
@@ -634,17 +615,14 @@ def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0):
         if player_caught:
             break
         t += dt_sim
-    avg_player_drone_distance_end = np.mean([distance((player.x, player.y),
-                                                      (d.x, d.y)) for d in drones])
+    avg_player_drone_distance_end = np.mean([distance((player.x, player.y), (d.x, d.y)) for d in drones])
     player_exit_distance_end = min_distance
-    avg_player_drone_distance = (
-                                            avg_player_drone_distance_start - avg_player_drone_distance_end) / avg_player_drone_distance_start
+    avg_player_drone_distance = (avg_player_drone_distance_start - avg_player_drone_distance_end) / avg_player_drone_distance_start
     player_exit_distance = (player_exit_distance_start - player_exit_distance_end) / player_exit_distance_start
     drone_fitness, player_fitness = calculate_fitness(player, drones, t, player_reached_exit, player_caught,
                                                       SCREEN_WIDTH, SCREEN_HEIGHT, max_time, avg_player_drone_distance,
                                                       player_exit_distance)
     return player_fitness, drone_fitness, t
-
 
 def calculate_fitness(player, drones, t, player_reached_exit, player_caught,
                       screen_width, screen_height, max_time, avg_player_drone_distance, player_exit_distance):
@@ -653,34 +631,28 @@ def calculate_fitness(player, drones, t, player_reached_exit, player_caught,
     if player_reached_exit:
         player_fitness += 50 + 50 * (max_time - t) / max_time
         drone_fitness += -(100 + (max_time - t))
-
     if player_caught:
         player_fitness += -(50 + 50 * (max_time - t) / max_time)
         drone_fitness += 50 + 50 * (max_time - t) / max_time
-
     max_screen_distance = distance((0, 0), (screen_width, screen_height))
     player_fitness += avg_player_drone_distance * 50
     drone_fitness += -avg_player_drone_distance * 50
-
     player_fitness += -player_exit_distance * 50
     drone_fitness += player_exit_distance * 50
-
     player_distance_covered = player.distance_covered / max_screen_distance
     drone_distance_covered = np.mean([d.distance_covered for d in drones]) / max_screen_distance
     player_fitness += player_distance_covered * 1
     drone_fitness += drone_distance_covered * 1
     return player_fitness, drone_fitness
 
-
 # --- Parallel Evaluation Helper ---
 def evaluate_candidate(args):
-    index, player_weights, drone_weights, dt_sim, max_time, drone_penalty, level = args
+    index, player_weights, drone_weights, dt_sim, max_time, level = args
     p_model = create_player_model()
     p_model.set_weights(player_weights)
     d_model = create_drone_model()
     d_model.set_weights(drone_weights)
-    return simulate_game(p_model, d_model, dt_sim, max_time, drone_penalty)
-
+    return simulate_game(p_model, d_model, dt_sim, max_time)
 
 # === Genetic Algorithm Training Mode ===
 def run_training_mode_genetic():
@@ -689,9 +661,6 @@ def run_training_mode_genetic():
     num_epochs = 400
     dt_sim = 0.033  # 30 FPS
     max_time = 60.0
-    base_penalty = BASE_DRONE_WALL_PENALTY
-
-    # Dynamic mutation settings: start high, then decay.
     mutation_rate = 0.1
     mutation_strength = 0.05
 
@@ -706,7 +675,7 @@ def run_training_mode_genetic():
             args_list.append((i,
                               player_population[i].get_weights(),
                               drone_population[i].get_weights(),
-                              dt_sim, max_time, current_penalty, level))
+                              dt_sim, max_time, level))
         if USE_PARALLEL_EVALUATION:
             with concurrent.futures.ProcessPoolExecutor() as executor:
                 results = list(executor.map(evaluate_candidate, args_list))
@@ -735,12 +704,9 @@ def run_training_mode_genetic():
             best_drone_models[0].save("best_drone_0.keras")
             best_player_models[0].save("best_player_0.keras")
         # Generate new population with dynamic mutation rates
-        player_population = generate_new_population(best_player_models, n, create_player_model, mutation_rate,
-                                                    mutation_strength)
-        drone_population = generate_new_population(best_drone_models, n, create_drone_model, mutation_rate,
-                                                   mutation_strength)
+        player_population = generate_new_population(best_player_models, n, create_player_model, mutation_rate, mutation_strength)
+        drone_population = generate_new_population(best_drone_models, n, create_drone_model, mutation_rate, mutation_strength)
     print("Genetic training complete.")
-
 
 # === Manual Mode ===
 def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
@@ -763,7 +729,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
     dungeon, player, drones, exit_rect, player_start = new_level()
     running = True
     while running:
-        dt = clock.tick(1) / 1000.0
+        dt = clock.tick(30) / 1000.0
         for event in pygame.event.get():
             if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                 running = False
@@ -773,7 +739,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
         else:
             player.update_manual(dt, dungeon)
         if USE_DRONE_NN:
-            outputs = batch_update_drones(drones, dt, dungeon, player, best_drone_model)
+            batch_update_drones(drones, dt, dungeon, player, best_drone_model)
         else:
             for drone in drones:
                 drone.update_random(dt, dungeon, drones)
@@ -795,17 +761,15 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
         pygame.display.flip()
     pygame.quit()
 
-
 # === Main Entry Point ===
 def main():
-    TRAINING_MODE = False  # Set to True for genetic training; False for manual mode.
+    TRAINING_MODE = True  # Set to True for genetic training; False for manual mode.
     USE_PLAYER_NN = True
     USE_DRONE_NN = False
     if TRAINING_MODE:
         run_training_mode_genetic()
     else:
         run_manual_mode(USE_PLAYER_NN, USE_DRONE_NN)
-
 
 if __name__ == "__main__":
     main()
