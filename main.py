@@ -370,7 +370,7 @@ def create_player_model():
         #tf.keras.layers.Dense(8, activation='relu'),
         tf.keras.layers.Dense(2, activation='tanh')
     ])
-    model.compile(optimizer='adam', loss='mse')
+    #model.compile(optimizer='adam', loss='mse')
     return model
 
 
@@ -490,11 +490,12 @@ class Drone:
         self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
         self.x, self.y = new_x, new_y
 
-    def update_nn(self, dt, dungeon, player, drones, model):
+    def update_nn(self, dt, dungeon, player, drones, model, output=None):
         # Do NOT batch the update; update each drone individually.
-        others = np.array([[d.x, d.y] for d in drones if d is not self], dtype=np.float32)
-        sensor_vec = get_drone_sensor_vector(self.x, self.y, dungeon, (player.x, player.y), others)
-        output = model(sensor_vec.reshape(1, -1)).numpy()[0]
+        if output is None:
+            others = np.array([[d.x, d.y] for d in drones if d is not self], dtype=np.float32)
+            sensor_vec = get_drone_sensor_vector(self.x, self.y, dungeon, (player.x, player.y), others)
+            output = model(sensor_vec.reshape(1, -1)).numpy()[0]
         dx, dy = output
         norm = math.hypot(dx, dy)
         dx /= norm;
@@ -510,6 +511,15 @@ class Drone:
 
     def draw(self, screen):
         pygame.draw.circle(screen, COLOR_DRONE, (int(self.x), int(self.y)), DRONE_RADIUS)
+
+
+def batch_update_drones(drones, dt, dungeon, player, models):
+    sensor_vectors = np.array([get_drone_sensor_vector(d.x, d.y, dungeon, (player.x, player.y),
+                                                       np.array([[o.x, o.y] for o in drones if o is not d],
+                                                                dtype=np.float32)) for d in drones], dtype=np.float32)
+    outputs = models(sensor_vectors).numpy()
+    for i, drone in enumerate(drones):
+        drone.update_nn(dt, dungeon, player, drones, models, outputs[i])
 
 
 # === Level Setup ===
@@ -566,8 +576,9 @@ def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0, drone_pe
     min_distance = player_exit_distance_start
     while t < max_time:
         player.update_nn(dt_sim, dungeon, drones, goal, player_model)
-        for drone in drones:
-            drone.update_nn(dt_sim, dungeon, player, drones, drone_model)
+        batch_update_drones(drones, dt_sim, dungeon, player, drone_model)
+        #for drone in drones:
+        #    drone.update_nn(dt_sim, dungeon, player, drones, drone_model)
         cur_distance = distance((player.x, player.y), goal)
         if cur_distance < min_distance:
             min_distance = cur_distance
@@ -584,10 +595,12 @@ def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0, drone_pe
     avg_player_drone_distance_end = np.mean([distance((player.x, player.y),
                                                       (d.x, d.y)) for d in drones])
     player_exit_distance_end = min_distance
-    avg_player_drone_distance = (avg_player_drone_distance_start - avg_player_drone_distance_end) / avg_player_drone_distance_start
+    avg_player_drone_distance = (
+                                            avg_player_drone_distance_start - avg_player_drone_distance_end) / avg_player_drone_distance_start
     player_exit_distance = (player_exit_distance_start - player_exit_distance_end) / player_exit_distance_start
     drone_fitness, player_fitness = calculate_fitness(player, drones, t, player_reached_exit, player_caught,
-                                                        SCREEN_WIDTH, SCREEN_HEIGHT, max_time, avg_player_drone_distance, player_exit_distance)
+                                                      SCREEN_WIDTH, SCREEN_HEIGHT, max_time, avg_player_drone_distance,
+                                                      player_exit_distance)
     return player_fitness, drone_fitness, t
 
 
@@ -629,8 +642,8 @@ def evaluate_candidate(args):
 
 # === Genetic Algorithm Training Mode ===
 def run_training_mode_genetic():
-    n = 300  # population size
-    m = 20  # number of best models to select
+    n = 3  # population size
+    m = 1  # number of best models to select
     num_epochs = 400
     dt_sim = 0.033  # 30 FPS
     max_time = 60.0
@@ -651,7 +664,7 @@ def run_training_mode_genetic():
         # Linearly decay mutation rate/strength.
         mutation_rate = initial_mutation_rate - (initial_mutation_rate - final_mutation_rate) * (epoch / num_epochs)
         mutation_strength = initial_mutation_strength - (initial_mutation_strength - final_mutation_strength) * (
-                    epoch / num_epochs)
+                epoch / num_epochs)
         start_epoch = time.time()
         level = new_level()  # use the same level for all candidate evaluations this epoch
         args_list = []
@@ -725,10 +738,10 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
             player.update_nn(dt, dungeon, drones, goal, best_player_model)
         else:
             player.update_manual(dt, dungeon)
-        for drone in drones:
-            if USE_DRONE_NN:
-                drone.update_nn(dt, dungeon, player, drones, best_drone_model)
-            else:
+        if USE_DRONE_NN:
+            batch_update_drones(drones, dt, dungeon, player, best_drone_model)
+        else:
+            for drone in drones:
                 drone.update_random(dt, dungeon, drones)
         if exit_rect.collidepoint(float(player.x), float(player.y)):
             dungeon, player, drones, exit_rect, player_start = new_level()
@@ -753,7 +766,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
 def main():
     TRAINING_MODE = True  # Set to True for genetic training; False for manual mode.
     USE_PLAYER_NN = False
-    USE_DRONE_NN = False
+    USE_DRONE_NN = True
     if TRAINING_MODE:
         run_training_mode_genetic()
     else:
