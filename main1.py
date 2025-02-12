@@ -18,8 +18,8 @@ MAP_HEIGHT = 20  # in tiles
 SCREEN_WIDTH = MAP_WIDTH * TILE_SIZE
 SCREEN_HEIGHT = MAP_HEIGHT * TILE_SIZE
 
-PLAYER_SPEED = 10.0
-DRONE_SPEED = 10.0
+PLAYER_SPEED = 200.0
+DRONE_SPEED = 100.0
 
 PLAYER_RADIUS = 10
 DRONE_RADIUS = 10
@@ -34,16 +34,9 @@ ROOM_MAX_SIZE = 8
 ROOM_MIN_SIZE = 4
 MAX_ROOMS = 15
 
-BASE_DRONE_WALL_PENALTY = 0.5  # Base penalty per failed drone move
-PLAYER_PROGRESS_SCALE = 1.0      # Bonus per unit progress (reduced distance to goal)
-DRONE_DISTANCE_SCALE = 0.1       # Penalty per unit average distance from player
-
-# === Mode Selection ===
-GAME_MODE = "training"   # "training" or "manual"
-USE_DRONE_NN = True
-
-# NEW: Flag to choose parallel or sequential evaluation.
-USE_PARALLEL_EVALUATION = True
+BASE_DRONE_WALL_PENALTY = 0.5
+PLAYER_PROGRESS_SCALE = 1.0
+DRONE_DISTANCE_SCALE = 0.1
 
 # === Numba-accelerated Functions ===
 @numba.njit
@@ -85,7 +78,7 @@ def one_hot(index, length):
         vec[index] = 1
     return vec
 
-# === Vectorized Sensor Functions for Drones (12-element sensor vector) ===
+# === Vectorized Sensor Functions for Drones ===
 def get_left_sensor(x, y, dungeon, player_pos, drones_pos):
     tile_x = int(x // TILE_SIZE)
     tile_y = int(y // TILE_SIZE)
@@ -312,20 +305,24 @@ def generate_dungeon():
         if rooms:
             prev_center = rooms[-1].center
             new_center = new_room.center
-            if random.randint(0,1):
+            if random.randint(0, 1):
+                # Horizontal corridor from prev_center.x to new_center.x at row = prev_center.y
                 for x_corr in range(min(prev_center[0], new_center[0]), max(prev_center[0], new_center[0]) + 1):
                     dungeon[prev_center[1]][x_corr] = 1
+                # Vertical corridor from prev_center.y to new_center.y at column = new_center.x
                 for y_corr in range(min(prev_center[1], new_center[1]), max(prev_center[1], new_center[1]) + 1):
                     dungeon[y_corr][new_center[0]] = 1
             else:
+                # Vertical corridor from prev_center.y to new_center.y at column = prev_center.x
                 for y_corr in range(min(prev_center[1], new_center[1]), max(prev_center[1], new_center[1]) + 1):
                     dungeon[y_corr][prev_center[0]] = 1
+                # Horizontal corridor from prev_center.x to new_center.x at row = new_center.y
                 for x_corr in range(min(prev_center[0], new_center[0]), max(prev_center[0], new_center[0]) + 1):
                     dungeon[new_center[1]][x_corr] = 1
         rooms.append(new_room)
     return dungeon, rooms
 
-# === TensorFlow Model Creation Functions (Input dim = 12) ===
+# === TensorFlow Model Creation Functions (Input dimension now 12) ===
 def create_drone_model():
     model = tf.keras.models.Sequential([
         tf.keras.layers.Input(shape=(12,)),
@@ -379,6 +376,7 @@ def generate_new_population(parents, n, create_model_fn, mutation_rate, mutation
 class Player:
     def __init__(self, x, y):
         self.x = x; self.y = y
+        self.distance_covered = 0
     def update_manual(self, dt, dungeon):
         keys = pygame.key.get_pressed()
         dx = dy = 0
@@ -396,6 +394,7 @@ class Player:
             new_x = self.x + dx * PLAYER_SPEED * dt
             new_y = self.y + dy * PLAYER_SPEED * dt
             if not collides_with_walls_numba(new_x, new_y, PLAYER_RADIUS, dungeon):
+                self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
                 self.x, self.y = new_x, new_y
     def update_nn(self, dt, dungeon, drones, goal, model):
         sensor_vec = get_player_sensor_vector_vectorized(self.x, self.y, dungeon,
@@ -409,6 +408,7 @@ class Player:
         new_x = self.x + dx * PLAYER_SPEED * dt
         new_y = self.y + dy * PLAYER_SPEED * dt
         if not collides_with_walls_numba(new_x, new_y, PLAYER_RADIUS, dungeon):
+            self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
             self.x, self.y = new_x, new_y
     def draw(self, screen):
         pygame.draw.circle(screen, COLOR_PLAYER, (int(self.x), int(self.y)), PLAYER_RADIUS)
@@ -419,7 +419,7 @@ class Drone:
         directions = [(dx, dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if dx or dy]
         self.current_dx, self.current_dy = random.choice(directions)
         self.direction_timer = random.uniform(1.5, 3.0)
-        self.failed_moves = 0
+        self.distance_covered = 0
     def update_random(self, dt, dungeon, drones):
         self.direction_timer -= dt
         if self.direction_timer <= 0:
@@ -434,6 +434,7 @@ class Drone:
         if any(distance((new_x, new_y), (d.x, d.y)) < DRONE_RADIUS*2 for d in drones if d is not self):
             self.direction_timer = 0
             return
+        self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
         self.x, self.y = new_x, new_y
     def update_nn(self, dt, dungeon, player, drones, model):
         # Do NOT batch the update; update each drone individually.
@@ -454,6 +455,7 @@ class Drone:
             return
         if any(distance((new_x, new_y), (d.x, d.y)) < DRONE_RADIUS*2 for d in drones if d is not self):
             return
+        self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
         self.x, self.y = new_x, new_y
     def draw(self, screen):
         pygame.draw.circle(screen, COLOR_DRONE, (int(self.x), int(self.y)), DRONE_RADIUS)
@@ -491,7 +493,7 @@ def new_level():
                         continue
                 tile_center = (tx*TILE_SIZE+TILE_SIZE/2, ty*TILE_SIZE+TILE_SIZE/2)
                 if distance(tile_center, player_start) > TILE_SIZE and not pygame.Rect(exit_rect).collidepoint(tile_center):
-                    if not any(distance(tile_center, (d.x, d.y)) < TILE_SIZE for d in drones):
+                    if not any(distance(tile_center, (d.x,d.y)) < TILE_SIZE for d in drones):
                         drones.append(Drone(tile_center[0], tile_center[1]))
                         break
     return dungeon_np, player, drones, exit_rect, player_start
@@ -523,25 +525,38 @@ def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0, drone_pe
         if player_caught:
             break
         t += dt_sim
-    progress = initial_distance - min_distance
-    # Punish player if exit not found by subtracting penalty based on remaining time.
-    if not player_reached_exit:
-        player_penalty = max_time - t
-    else:
-        player_penalty = 0
-    if player_reached_exit:
-        player_fitness = 60 + (60 - t) + player_progress_scale * progress - player_penalty
-        drone_fitness = -t
-    elif player_caught:
-        player_fitness = t + player_progress_scale * progress - player_penalty
-        drone_fitness = 60 - t
-    else:
-        player_fitness = t + player_progress_scale * progress - player_penalty
-        drone_fitness = -t
-    total_failed = sum(d.failed_moves for d in drones)
-    avg_distance = np.mean([distance((player.x, player.y), (d.x, d.y)) for d in drones])
-    drone_fitness = drone_fitness - drone_distance_scale * avg_distance - total_failed * drone_penalty
+    drone_fitness, player_fitness = calculate_fitness(player, drones, t, player_reached_exit, player_caught,
+                                                      SCREEN_WIDTH, SCREEN_HEIGHT, max_time)
     return player_fitness, drone_fitness, t
+
+def calculate_fitness(player, drones, t, player_reached_exit, player_caught,
+                      screen_width, screen_height, max_time, min_distance):
+    player_fitness = 0
+    drone_fitness = 0
+    if player_reached_exit:
+        player_fitness += 50 + 50 * (max_time - t)/max_time
+        drone_fitness += -(100 + (max_time - t))
+
+    if player_caught:
+        player_fitness += -(50 + 50 * (max_time - t)/max_time)
+        drone_fitness += 50 + 50 * (max_time - t)/max_time
+
+    max_screen_distance = distance((0, 0), (screen_width, screen_height))
+    avg_player_drone_distance = np.mean([distance((player.x, player.y),
+                                                  (d.x, d.y)) for d in drones]) / max_screen_distance
+    player_fitness += avg_player_drone_distance * 50
+    drone_fitness += -avg_player_drone_distance * 50
+
+    player_exit_distance = max_screen_distance / min_distance
+    player_fitness += player_exit_distance * 50
+    drone_fitness += -player_exit_distance * 50
+
+    player_distance_covered = player.distance_covered
+    drone_distance_covered = np.mean([d.distance_covered for d in drones])
+    player_fitness += player_distance_covered * 1
+    drone_fitness += drone_distance_covered * 1
+    return player_fitness, drone_fitness
+
 
 # --- Parallel Evaluation Helper ---
 def evaluate_candidate(args):
@@ -550,47 +565,32 @@ def evaluate_candidate(args):
     p_model.set_weights(player_weights)
     d_model = create_drone_model()
     d_model.set_weights(drone_weights)
-    return simulate_game(p_model, d_model, dt_sim, max_time, drone_penalty)
+    return simulate_game(p_model, d_model, level, dt_sim, max_time, drone_penalty)
 
 # === Genetic Algorithm Training Mode ===
 def run_training_mode_genetic():
     n = 300    # population size
-    m = 20     # number of best models to select
-    num_epochs = 400
-    dt_sim = 0.2
+    m = 30     # number of best models to select
+    num_epochs = 100
+    dt_sim = 0.1
     max_time = 60.0
     base_penalty = BASE_DRONE_WALL_PENALTY
-
-    # Dynamic mutation settings: start high, then decay.
-    initial_mutation_rate = 0.1
-    final_mutation_rate = 0.01
-    initial_mutation_strength = 0.05
-    final_mutation_strength = 0.01
 
     player_population = [create_player_model() for _ in range(n)]
     drone_population = [create_drone_model() for _ in range(n)]
 
     for epoch in range(num_epochs):
-        # Adjust drone wall penalty dynamically.
         current_penalty = base_penalty * (1 + epoch/num_epochs)
-        # Linearly decay mutation rate/strength.
-        mutation_rate = initial_mutation_rate - (initial_mutation_rate - final_mutation_rate)*(epoch/num_epochs)
-        mutation_strength = initial_mutation_strength - (initial_mutation_strength - final_mutation_strength)*(epoch/num_epochs)
         start_epoch = time.time()
-        level = new_level()  # use the same level for all candidate evaluations this epoch
         args_list = []
+        level = new_level()
         for i in range(n):
             args_list.append((i,
                               player_population[i].get_weights(),
                               drone_population[i].get_weights(),
                               dt_sim, max_time, current_penalty, level))
-        if USE_PARALLEL_EVALUATION:
-            with concurrent.futures.ProcessPoolExecutor() as executor:
-                results = list(executor.map(evaluate_candidate, args_list))
-        else:
-            results = []
-            for args in args_list:
-                results.append(evaluate_candidate(args))
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            results = list(executor.map(evaluate_candidate, args_list))
         player_fitnesses = [res[0] for res in results]
         drone_fitnesses = [res[1] for res in results]
         sim_times = [res[2] for res in results]
@@ -603,7 +603,7 @@ def run_training_mode_genetic():
         best_drone_idx = np.argsort(drone_fitnesses)[-m:]
         best_player_models = [player_population[i] for i in best_player_idx]
         best_drone_models = [drone_population[i] for i in best_drone_idx]
-        if (epoch % 10 == 0) or (epoch == num_epochs-1):
+        if (epoch % 10 == 0) or (epoch == num_epochs):
             for i, model in enumerate(best_player_models):
                 model.save(f"best_player_{i}.keras")
             for i, model in enumerate(best_drone_models):
@@ -611,9 +611,8 @@ def run_training_mode_genetic():
         else:
             best_drone_models[0].save("best_drone_0.keras")
             best_player_models[0].save("best_player_0.keras")
-        # Generate new population with dynamic mutation rates
-        player_population = generate_new_population(best_player_models, n, create_player_model, mutation_rate, mutation_strength)
-        drone_population = generate_new_population(best_drone_models, n, create_drone_model, mutation_rate, mutation_strength)
+        player_population = generate_new_population(best_player_models, n, create_player_model)
+        drone_population = generate_new_population(best_drone_models, n, create_drone_model)
     print("Genetic training complete.")
 
 # === Manual Mode ===
@@ -637,9 +636,9 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
     dungeon, player, drones, exit_rect, player_start = new_level()
     running = True
     while running:
-        dt = clock.tick(60) / 30.0
+        dt = clock.tick(60) / 1000.0
         for event in pygame.event.get():
-            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+            if event.type == pygame.QUIT or (event.type==pygame.KEYDOWN and event.key==pygame.K_ESCAPE):
                 running = False
         goal = (exit_rect.x+TILE_SIZE/2, exit_rect.y+TILE_SIZE/2)
         if USE_PLAYER_NN:
@@ -671,9 +670,10 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
 
 # === Main Entry Point ===
 def main():
-    TRAINING_MODE = True   # Set to True for genetic training; False for manual mode.
-    USE_PLAYER_NN = False
+    TRAINING_MODE = True
+    # TRAINING_MODE = False
     USE_DRONE_NN = True
+    USE_PLAYER_NN = False
     if TRAINING_MODE:
         run_training_mode_genetic()
     else:
@@ -681,4 +681,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
