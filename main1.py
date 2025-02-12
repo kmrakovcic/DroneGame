@@ -18,8 +18,8 @@ MAP_HEIGHT = 20  # in tiles
 SCREEN_WIDTH = MAP_WIDTH * TILE_SIZE
 SCREEN_HEIGHT = MAP_HEIGHT * TILE_SIZE
 
-PLAYER_SPEED = 200.0
-DRONE_SPEED = 100.0
+PLAYER_SPEED = 10.0
+DRONE_SPEED = 10.0
 
 PLAYER_RADIUS = 10
 DRONE_RADIUS = 10
@@ -672,7 +672,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
 # === Main Entry Point ===
 def main():
     TRAINING_MODE = True   # Set to True for genetic training; False for manual mode.
-    USE_PLAYER_NN = True
+    USE_PLAYER_NN = False
     USE_DRONE_NN = True
     if TRAINING_MODE:
         run_training_mode_genetic()
