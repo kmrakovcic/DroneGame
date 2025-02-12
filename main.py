@@ -1,4 +1,7 @@
 import os.path
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 import time
 import pygame
 import random
@@ -340,8 +343,8 @@ def create_player_model():
     model.compile(optimizer='adam', loss='mse')
     return model
 
-# === Reproduction Functions ===
-def crossover_models(parent1, parent2, create_model_fn, mutation_rate=0.05, mutation_strength=0.02):
+# === Reproduction Functions with Dynamic Mutation Rates and Diversity Injection ===
+def crossover_models(parent1, parent2, create_model_fn, mutation_rate, mutation_strength):
     weights1 = parent1.get_weights()
     weights2 = parent2.get_weights()
     new_weights = []
@@ -355,13 +358,18 @@ def crossover_models(parent1, parent2, create_model_fn, mutation_rate=0.05, muta
     new_model.set_weights(new_weights)
     return new_model
 
-def generate_new_population(parents, n, create_model_fn):
+def generate_new_population(parents, n, create_model_fn, mutation_rate, mutation_strength):
     new_population = []
     while len(new_population) < n:
         p1 = random.choice(parents)
         p2 = random.choice(parents)
-        offspring = crossover_models(p1, p2, create_model_fn)
+        offspring = crossover_models(p1, p2, create_model_fn, mutation_rate, mutation_strength)
         new_population.append(offspring)
+    # Inject some new random individuals for diversity (e.g., 10% of population)
+    num_random = max(1, int(0.1 * n))
+    for _ in range(num_random):
+        idx = random.randint(0, n-1)
+        new_population[idx] = create_model_fn()
     return new_population
 
 # === Game Entities ===
@@ -425,13 +433,17 @@ class Drone:
             return
         self.x, self.y = new_x, new_y
     def update_nn(self, dt, dungeon, player, drones, model):
-        other_drones = np.array([[d.x, d.y] for d in drones if d is not self], dtype=np.float32)
-        sensor_vec = get_drone_sensor_vector(self.x, self.y, dungeon, (player.x, player.y), other_drones)
+        # Do NOT batch the update; update each drone individually.
+        others = np.array([[d.x, d.y] for d in drones if d is not self], dtype=np.float32)
+        sensor_vec = get_drone_sensor_vector(self.x, self.y, dungeon, (player.x, player.y), others)
         output = model(sensor_vec.reshape(1, -1)).numpy()[0]
         dx, dy = output
         norm = math.hypot(dx, dy)
-        if norm:
-            dx /= norm; dy /= norm
+        # Disallow stationarity
+        if norm < 0.1:
+            self.failed_moves += 1
+            return
+        dx /= norm; dy /= norm
         new_x = self.x + dx * DRONE_SPEED * dt
         new_y = self.y + dy * DRONE_SPEED * dt
         if collides_with_walls_numba(new_x, new_y, DRONE_RADIUS, dungeon):
@@ -509,14 +521,19 @@ def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0, drone_pe
             break
         t += dt_sim
     progress = initial_distance - min_distance
+    # Punish player if exit not found by subtracting penalty based on remaining time.
+    if not player_reached_exit:
+        player_penalty = max_time - t
+    else:
+        player_penalty = 0
     if player_reached_exit:
-        player_fitness = 60 + (60 - t) + player_progress_scale * progress
+        player_fitness = 60 + (60 - t) + player_progress_scale * progress - player_penalty
         drone_fitness = -t
     elif player_caught:
-        player_fitness = t + player_progress_scale * progress
+        player_fitness = t + player_progress_scale * progress - player_penalty
         drone_fitness = 60 - t
     else:
-        player_fitness = t + player_progress_scale * progress
+        player_fitness = t + player_progress_scale * progress - player_penalty
         drone_fitness = -t
     total_failed = sum(d.failed_moves for d in drones)
     avg_distance = np.mean([distance((player.x, player.y), (d.x, d.y)) for d in drones])
@@ -525,18 +542,18 @@ def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0, drone_pe
 
 # --- Parallel Evaluation Helper ---
 def evaluate_candidate(args):
-    index, player_weights, drone_weights, dt_sim, max_time, drone_penalty = args
+    index, player_weights, drone_weights, dt_sim, max_time, drone_penalty, level = args
     p_model = create_player_model()
     p_model.set_weights(player_weights)
     d_model = create_drone_model()
     d_model.set_weights(drone_weights)
-    return simulate_game(p_model, d_model, dt_sim, max_time, drone_penalty)
+    return simulate_game(p_model, d_model, level, dt_sim, max_time, drone_penalty)
 
 # === Genetic Algorithm Training Mode ===
 def run_training_mode_genetic():
-    n = 10    # population size
-    m = 2     # number of best models to select
-    num_epochs = 10
+    n = 300    # population size
+    m = 30     # number of best models to select
+    num_epochs = 100
     dt_sim = 0.1
     max_time = 60.0
     base_penalty = BASE_DRONE_WALL_PENALTY
@@ -548,11 +565,12 @@ def run_training_mode_genetic():
         current_penalty = base_penalty * (1 + epoch/num_epochs)
         start_epoch = time.time()
         args_list = []
+        level = new_level()
         for i in range(n):
             args_list.append((i,
                               player_population[i].get_weights(),
                               drone_population[i].get_weights(),
-                              dt_sim, max_time, current_penalty))
+                              dt_sim, max_time, current_penalty, level))
         with concurrent.futures.ProcessPoolExecutor() as executor:
             results = list(executor.map(evaluate_candidate, args_list))
         player_fitnesses = [res[0] for res in results]
@@ -567,10 +585,14 @@ def run_training_mode_genetic():
         best_drone_idx = np.argsort(drone_fitnesses)[-m:]
         best_player_models = [player_population[i] for i in best_player_idx]
         best_drone_models = [drone_population[i] for i in best_drone_idx]
-        for i, model in enumerate(best_player_models):
-            model.save(f"best_player_{i}.keras")
-        for i, model in enumerate(best_drone_models):
-            model.save(f"best_drone_{i}.keras")
+        if (epoch % 10 == 0) or (epoch == num_epochs):
+            for i, model in enumerate(best_player_models):
+                model.save(f"best_player_{i}.keras")
+            for i, model in enumerate(best_drone_models):
+                model.save(f"best_drone_{i}.keras")
+        else:
+            best_drone_models[0].save("best_drone_0.keras")
+            best_player_models[0].save("best_player_0.keras")
         player_population = generate_new_population(best_player_models, n, create_player_model)
         drone_population = generate_new_population(best_drone_models, n, create_drone_model)
     print("Genetic training complete.")
