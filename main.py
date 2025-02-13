@@ -664,7 +664,7 @@ def evaluate_candidate(args):
 def run_training_mode_genetic():
     n = 300  # population size
     m = 30  # number of best models to select
-    num_epochs = 400
+    num_epochs = 1000
     dt_sim = 0.033  # 30 FPS
     max_time = 60.0
     mutation_rate = 0.1
