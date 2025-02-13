@@ -345,7 +345,7 @@ def generate_dungeon():
 def create_drone_model():
     model = tf.keras.models.Sequential([
         tf.keras.layers.Input(shape=(12,)),
-        tf.keras.layers.Dense(16, activation='relu'),
+        tf.keras.layers.Dense(8, activation='relu'),
         tf.keras.layers.Dense(2, activation='tanh')
     ])
     model.compile(optimizer='adam', loss='mse')
@@ -354,7 +354,7 @@ def create_drone_model():
 def create_player_model():
     model = tf.keras.models.Sequential([
         tf.keras.layers.Input(shape=(12,)),
-        tf.keras.layers.Dense(16, activation='relu'),
+        tf.keras.layers.Dense(8, activation='relu'),
         tf.keras.layers.Dense(2, activation='tanh')
     ])
     return model
@@ -468,8 +468,10 @@ class Player:
                 vy = 0
 
         # Update the player's position and covered distance.
-        self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
-        self.x, self.y = new_x, new_y
+        mask = np.kron(np.array(dungeon, dtype=np.int32), np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32))
+        if mask[int(new_y), int(new_x)] == 1:
+            self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
+            self.x, self.y = new_x, new_y
 
     def draw(self, screen):
         pygame.draw.circle(screen, COLOR_PLAYER, (int(self.x), int(self.y)), PLAYER_RADIUS)
@@ -497,8 +499,10 @@ class Drone:
         if any(distance((new_x, new_y), (d.x, d.y)) < DRONE_RADIUS * 2 for d in drones if d is not self):
             self.direction_timer = 0
             return
-        self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
-        self.x, self.y = new_x, new_y
+        mask = np.kron(np.array(dungeon, dtype=np.int32), np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32))
+        if mask[int(new_y), int(new_x)] == 1:
+            self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
+            self.x, self.y = new_x, new_y
 
     def update_nn(self, dt, dungeon, player, drones, model, output=None):
         if output is None:
@@ -535,8 +539,10 @@ class Drone:
             new_x, new_y = self.x, self.y
             vx = vy = 0
 
-        self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
-        self.x, self.y = new_x, new_y
+        mask = np.kron(np.array(dungeon, dtype=np.int32), np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32))
+        if mask[int(new_y), int(new_x)] == 1:
+            self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
+            self.x, self.y = new_x, new_y
 
     def draw(self, screen):
         pygame.draw.circle(screen, COLOR_DRONE, (int(self.x), int(self.y)), DRONE_RADIUS)
@@ -574,7 +580,7 @@ def new_level():
         player_room = None
     drones = []
     num_drones = 3
-    for _ in range(num_drones):
+    for dn in range(num_drones):
         while True:
             tx = random.randint(0, MAP_WIDTH - 1)
             ty = random.randint(0, MAP_HEIGHT - 1)
@@ -765,7 +771,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
 def main():
     TRAINING_MODE = True  # Set to True for genetic training; False for manual mode.
     USE_PLAYER_NN = True
-    USE_DRONE_NN = False
+    USE_DRONE_NN = True
     if TRAINING_MODE:
         run_training_mode_genetic()
     else:
