@@ -683,8 +683,20 @@ def run_training_mode_genetic():
                               drone_population[i].get_weights(),
                               dt_sim, max_time, level))
         if USE_PARALLEL_EVALUATION:
-            with concurrent.futures.ProcessPoolExecutor() as executor:
-                results = list(executor.map(evaluate_candidate, args_list))
+            restarts=0
+            while True:
+                try:
+                    with concurrent.futures.ProcessPoolExecutor(max_workers=min(1, os.cpu_count()-2)) as executor:
+                        results = list(executor.map(evaluate_candidate, args_list, timeout=240))
+                    # If successful, break out of the retry loop and proceed
+                    break
+
+                except concurrent.futures.TimeoutError:
+                    if restarts <= 5:
+                        restarts+=1
+                        print(f"Timeout occurred in epoch {epoch + 1}! Restarting the epoch...")
+                    else:
+                        break
         else:
             results = []
             for args in args_list:

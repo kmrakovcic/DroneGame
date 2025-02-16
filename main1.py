@@ -770,7 +770,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True):
 # === Main Entry Point ===
 def main():
     TRAINING_MODE = False  # Set to True for genetic training; False for manual mode.
-    USE_PLAYER_NN = True
+    USE_PLAYER_NN = False
     USE_DRONE_NN = True
     if TRAINING_MODE:
         run_training_mode_genetic()
