@@ -686,7 +686,7 @@ def run_training_mode_genetic():
             restarts=0
             while True:
                 try:
-                    with concurrent.futures.ProcessPoolExecutor(max_workers=min(1, os.cpu_count()-2)) as executor:
+                    with concurrent.futures.ProcessPoolExecutor() as executor:
                         results = list(executor.map(evaluate_candidate, args_list, timeout=240))
                     # If successful, break out of the retry loop and proceed
                     break
