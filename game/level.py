@@ -2,7 +2,7 @@ import os
 import random
 import pygame
 import numpy as np
-from config import TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT
+from config import TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT, DRONE_NUMBER
 from entities.player import Player
 from entities.drone import Drone
 from utils import distance
@@ -72,7 +72,7 @@ def new_level():
         player_room = None
 
     drones = []
-    num_drones = 3
+    num_drones = DRONE_NUMBER
     for dn in range(num_drones):
         while True:
             tx = random.randint(0, MAP_WIDTH - 1)

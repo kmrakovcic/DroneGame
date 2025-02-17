@@ -70,6 +70,9 @@ class Drone:
             vy = -vy
             new_y = self.y + vy * dt
             new_x = self.x + vx * dt
+            if collides_with_walls_numba(self.x, new_y, DRONE_RADIUS, dungeon):
+                new_x, new_y = self.x, self.y
+                vx = vy = 0
 
         mask = np.kron(np.array(dungeon, dtype=np.int32), np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32))
         if mask[int(new_y), int(new_x)] == 1:
