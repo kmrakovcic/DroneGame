@@ -10,7 +10,7 @@ def main():
     args = parser.parse_args()
 
     if args.mode == 'manual':
-        run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
+        run_manual_mode(USE_PLAYER_NN=False, USE_DRONE_NN=True, path="../models_ga/")
     elif args.mode == 'train_cma':
         training_cma.run_training("../models_cma/", use_parallel_evaluation=True)
     elif args.mode == 'train_ga':

@@ -64,10 +64,12 @@ class Drone:
                 new_y = self.y
                 vy = 0
 
-        # Optionally: check for drone-drone collisions and cancel movement if needed.
+        # Optionally: check for drone-drone collisions and reverse movement if needed.
         if any(distance((new_x, new_y), (d.x, d.y)) < DRONE_RADIUS * 2 for d in drones if d is not self):
-            new_x, new_y = self.x, self.y
-            vx = vy = 0
+            vx = -vx
+            vy = -vy
+            new_y = self.y + vy * dt
+            new_x = self.x + vx * dt
 
         mask = np.kron(np.array(dungeon, dtype=np.int32), np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32))
         if mask[int(new_y), int(new_x)] == 1:
