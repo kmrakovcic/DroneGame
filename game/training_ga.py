@@ -86,7 +86,7 @@ def run_training(save_path, use_parallel_evaluation=True):
             while True:
                 try:
                     with concurrent.futures.ProcessPoolExecutor() as executor:
-                        results = list(executor.map(evaluate_candidate, args_list, timeout=240))
+                        results = list(executor.map(evaluate_candidate, args_list, timeout=600))
                     # If successful, break out of the retry loop and proceed
                     break
 
