@@ -1,6 +1,6 @@
 import numpy as np
 
-from cma_prototype import SCREEN_WIDTH, SCREEN_HEIGHT
+from config import SCREEN_WIDTH, SCREEN_HEIGHT
 from level import new_level
 from utils import distance
 from config import TILE_SIZE, PLAYER_RADIUS, DRONE_RADIUS
