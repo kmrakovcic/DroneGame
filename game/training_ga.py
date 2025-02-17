@@ -59,9 +59,18 @@ def run_training(save_path, use_parallel_evaluation=True):
         save_path += '/'
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-
-    player_population = [create_player_model() for _ in range(n)]
-    drone_population = [create_drone_model() for _ in range(n)]
+        player_population=[]
+        drone_population=[]
+    else:
+        #load all models from the save_path that start with "best_player" and "best_drone"
+        drone_population = [create_drone_model().load(save_path+file) for file in os.listdir(save_path) if
+                            file.startswith("best_drone")]
+        player_population = [create_player_model().load(save_path + file) for file in os.listdir(save_path) if
+                            file.startswith("best_player")]
+    if len(player_population) == 0:
+        player_population = [create_player_model() for _ in range(n)]
+    if len(drone_population) == 0:
+        drone_population = [create_drone_model() for _ in range(n)]
 
     for epoch in range(num_epochs):
         start_epoch = time.time()
