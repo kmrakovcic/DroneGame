@@ -35,7 +35,7 @@ def evaluate_pairing(args):
     player_fits = []
     drone_fits = []
     for _ in range(num_evals):
-        pf, df = fitness_player(p_candidate, d_candidate, dt, max_time)
+        pf, df = fitness_player_drone(p_candidate, d_candidate, dt, max_time)
         player_fits.append(pf)
         drone_fits.append(df)
     return np.mean(player_fits), np.mean(drone_fits)
