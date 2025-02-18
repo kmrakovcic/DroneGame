@@ -7,6 +7,7 @@ from training_helpers import evaluate_candidate
 from training_helpers import unflatten_weights, flatten_weights
 from simulation import simulate_game
 
+
 def fitness_player_drone(flat_player_weights, flat_drone_weights, dt, max_time):
     """Evaluate the player fitness when using these candidate weights.
        (Assume higher is better; we will return negative value for minimization.)"""
@@ -21,6 +22,7 @@ def fitness_player_drone(flat_player_weights, flat_drone_weights, dt, max_time):
 
     player_fitness, drone_fitness, sim_time = simulate_game(p_model, d_model, dt_sim=dt, max_time=max_time)
     return -player_fitness, -drone_fitness
+
 
 # ================================================================
 # NES Optimizer (Simple Isotropic Version)
@@ -94,14 +96,15 @@ def evaluate_pairing(args):
         drone_fits.append(df)
     return np.mean(player_fits), np.mean(drone_fits)
 
+
 # ================================================================
 # Replace CMA-ES with NES in your co-evolution loop
 # ================================================================
-def run_training(save_path, use_parallel_evaluation=True):
+def run_training(save_path, epochs, use_parallel_evaluation=True):
     n = 300  # population size
     dt_sim = 0.033  # simulation time step (30 FPS)
     max_time = 60.0
-    max_generations = 1000
+    max_generations = epochs
 
     # Ensure save_path ends with '/'
     if save_path[-1] != '/':
@@ -147,13 +150,23 @@ def run_training(save_path, use_parallel_evaluation=True):
 
         # Evaluate candidate pairs in parallel if desired.
         if use_parallel_evaluation:
-            with concurrent.futures.ProcessPoolExecutor() as executor:
-                results = list(executor.map(evaluate_pairing, candidate_tuples))
+            restarts = 0
+            while True:
+                try:
+                    with concurrent.futures.ProcessPoolExecutor() as executor:
+                        results = list(executor.map(evaluate_pairing, candidate_tuples, timeout=600))
+                        break
+                except concurrent.futures.TimeoutError:
+                    if restarts <= 5:
+                        restarts += 1
+                        print(f"Timeout occurred in epoch {epoch + 1}! Restarting the epoch...")
+                    else:
+                        break
         else:
             results = []
             for c, ct in enumerate(candidate_tuples):
                 results.append(evaluate_pairing(ct))
-                print("\rCompleted candidate: " + str(c+1) + "/" + str(n), end="")
+                print("\rCompleted candidate: " + str(c + 1) + "/" + str(n), end="")
 
         # Extract fitness values.
         player_fit_values = [res[0] for res in results]

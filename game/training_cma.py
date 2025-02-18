@@ -42,11 +42,11 @@ def evaluate_pairing(args):
 
 
 # === Genetic Algorithm Training Mode ===
-def run_training(save_path, use_parallel_evaluation=True):
+def run_training(save_path, epochs, use_parallel_evaluation=True):
     n = 300  # population size
     dt_sim = 0.033  # 30 FPS
     max_time = 60.0
-    max_generations = 1000
+    max_generations = epochs
     if save_path[-1] != '/':
         save_path += '/'
     if not os.path.exists(save_path):

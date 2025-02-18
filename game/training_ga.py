@@ -7,6 +7,7 @@ from training_helpers import evaluate_candidate
 from level import new_level
 import os
 
+
 # === Reproduction Functions (Unchanged) ===
 def intermediate_crossover_models(parent1, parent2, create_model_fn, mutation_rate, mutation_strength):
     weights1 = parent1.get_weights()
@@ -22,6 +23,7 @@ def intermediate_crossover_models(parent1, parent2, create_model_fn, mutation_ra
     new_model.set_weights(new_weights)
     return new_model
 
+
 def discrete_crossover_models(parent1, parent2, create_model_fn, mutation_rate, mutation_strength):
     weights1 = parent1.get_weights()
     weights2 = parent2.get_weights()
@@ -36,6 +38,7 @@ def discrete_crossover_models(parent1, parent2, create_model_fn, mutation_rate, 
     new_model.set_weights(new_weights)
     return new_model
 
+
 def generate_new_population(parents, n, create_model_fn, mutation_rate, mutation_strength):
     new_population = []
     while len(new_population) < n:
@@ -45,11 +48,12 @@ def generate_new_population(parents, n, create_model_fn, mutation_rate, mutation
         new_population.append(offspring)
     return new_population
 
+
 # === Genetic Algorithm Training Mode ===
-def run_training(save_path, use_parallel_evaluation=True):
+def run_training(save_path, epochs, use_parallel_evaluation=True):
     n = 300  # population size
     m = 30  # number of best models to select
-    num_epochs = 1000
+    num_epochs = epochs
     dt_sim = 0.033  # 30 FPS
     max_time = 60.0
     mutation_rate = 0.1
@@ -59,14 +63,14 @@ def run_training(save_path, use_parallel_evaluation=True):
         save_path += '/'
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-        player_population=[]
-        drone_population=[]
+        player_population = []
+        drone_population = []
     else:
         #load all models from the save_path that start with "best_player" and "best_drone"
-        drone_population = [create_drone_model().load(save_path+file) for file in os.listdir(save_path) if
+        drone_population = [create_drone_model().load(save_path + file) for file in os.listdir(save_path) if
                             file.startswith("best_drone")]
         player_population = [create_player_model().load(save_path + file) for file in os.listdir(save_path) if
-                            file.startswith("best_player")]
+                             file.startswith("best_player")]
     if len(player_population) == 0:
         player_population = [create_player_model() for _ in range(n)]
     if len(drone_population) == 0:
@@ -82,7 +86,7 @@ def run_training(save_path, use_parallel_evaluation=True):
                               drone_population[i].get_weights(),
                               dt_sim, max_time, level))
         if use_parallel_evaluation:
-            restarts=0
+            restarts = 0
             while True:
                 try:
                     with concurrent.futures.ProcessPoolExecutor() as executor:
@@ -92,7 +96,7 @@ def run_training(save_path, use_parallel_evaluation=True):
 
                 except concurrent.futures.TimeoutError:
                     if restarts <= 5:
-                        restarts+=1
+                        restarts += 1
                         print(f"Timeout occurred in epoch {epoch + 1}! Restarting the epoch...")
                     else:
                         break
@@ -100,7 +104,7 @@ def run_training(save_path, use_parallel_evaluation=True):
             results = []
             for c, args in enumerate(args_list):
                 results.append(evaluate_candidate(args))
-                print ("\rCompleted candidate: "+str(c)+"/"+str(n), end="")
+                print("\rCompleted candidate: " + str(c) + "/" + str(n), end="")
         player_fitnesses = [res[0] for res in results]
         drone_fitnesses = [res[1] for res in results]
         sim_times = [res[2] for res in results]
@@ -115,15 +119,17 @@ def run_training(save_path, use_parallel_evaluation=True):
         best_drone_models = [drone_population[i] for i in best_drone_idx]
         if (epoch % 10 == 0) or (epoch == num_epochs - 1):
             for i, model in enumerate(best_player_models):
-                model.save(save_path+f"best_player_{i}.keras")
+                model.save(save_path + f"best_player_{i}.keras")
             for i, model in enumerate(best_drone_models):
-                model.save(save_path+f"best_drone_{i}.keras")
-            best_drone_models[0].save(save_path+"drone.keras")
-            best_player_models[0].save(save_path+"player.keras")
+                model.save(save_path + f"best_drone_{i}.keras")
+            best_drone_models[0].save(save_path + "drone.keras")
+            best_player_models[0].save(save_path + "player.keras")
         else:
-            best_drone_models[0].save(save_path+"drone.keras")
-            best_player_models[0].save(save_path+"player.keras")
+            best_drone_models[0].save(save_path + "drone.keras")
+            best_player_models[0].save(save_path + "player.keras")
         # Generate new population with dynamic mutation rates
-        player_population = generate_new_population(best_player_models, n, create_player_model, mutation_rate, mutation_strength)
-        drone_population = generate_new_population(best_drone_models, n, create_drone_model, mutation_rate, mutation_strength)
+        player_population = generate_new_population(best_player_models, n, create_player_model, mutation_rate,
+                                                    mutation_strength)
+        drone_population = generate_new_population(best_drone_models, n, create_drone_model, mutation_rate,
+                                                   mutation_strength)
     print("Genetic training complete.")

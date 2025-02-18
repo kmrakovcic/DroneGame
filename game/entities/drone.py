@@ -10,6 +10,8 @@ class Drone:
     def __init__(self, x, y):
         self.x = x
         self.y = y
+        self.vx = 0
+        self.vy = 0
         directions = [(dx, dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if dx or dy]
         self.current_dx, self.current_dy = random.choice(directions)
         self.direction_timer = random.uniform(5, 10)
@@ -35,45 +37,60 @@ class Drone:
             self.x, self.y = new_x, new_y
 
     def update_nn(self, dt, dungeon, player, drones, model, output=None):
+        # Get network output if not provided
         if output is None:
             others = np.array([[d.x, d.y] for d in drones if d is not self], dtype=np.float32)
             sensor_vec = get_drone_sensor_vector(self.x, self.y, dungeon, (player.x, player.y), others)
             output = model(sensor_vec.reshape(1, -1)).numpy()[0]
-        norm = math.hypot(output[0], output[1])
-        if norm:
-            vx = (output[0] / norm) * DRONE_SPEED
-            vy = (output[1] / norm) * DRONE_SPEED
-        else:
-            vx = vy = 0
+
+        # Interpret network output as acceleration (x and y components)
+        accel_x = output[0]
+        accel_y = output[1]
+
+        # Optionally, apply a scaling factor to control acceleration magnitude
+        ACCEL_FACTOR = DRONE_SPEED  # adjust as needed
+        self.vx += accel_x * dt * ACCEL_FACTOR
+        self.vy += accel_y * dt * ACCEL_FACTOR
+
+        # Optional: clamp velocity to a maximum speed (DRONE_SPEED)
+        max_velocity = DRONE_SPEED
+        current_speed = math.hypot(self.vx, self.vy)
+        if current_speed > max_velocity:
+            self.vx = (self.vx / current_speed) * max_velocity
+            self.vy = (self.vy / current_speed) * max_velocity
 
         # --- Horizontal Movement ---
-        new_x = self.x + vx * dt
+        new_x = self.x + self.vx * dt
         if collides_with_walls_numba(new_x, self.y, DRONE_RADIUS, dungeon):
-            vx = -vx  # bounce horizontally
-            new_x = self.x + vx * dt
+            self.vx = -self.vx  # bounce horizontally
+            new_x = self.x + self.vx * dt
             if collides_with_walls_numba(new_x, self.y, DRONE_RADIUS, dungeon):
                 new_x = self.x
-                vx = 0
+                self.vx = 0
 
         # --- Vertical Movement ---
-        new_y = self.y + vy * dt
+        new_y = self.y + self.vy * dt
         if collides_with_walls_numba(self.x, new_y, DRONE_RADIUS, dungeon):
-            vy = -vy  # bounce vertically
-            new_y = self.y + vy * dt
+            self.vy = -self.vy  # bounce vertically
+            new_y = self.y + self.vy * dt
             if collides_with_walls_numba(self.x, new_y, DRONE_RADIUS, dungeon):
                 new_y = self.y
-                vy = 0
+                self.vy = 0
 
-        # Optionally: check for drone-drone collisions and reverse movement if needed.
+        # Optionally check for collisions with other drones
         if any(distance((new_x, new_y), (d.x, d.y)) < DRONE_RADIUS * 2 for d in drones if d is not self):
-            vx = -vx
-            vy = -vy
-            new_y = self.y + vy * dt
-            new_x = self.x + vx * dt
-            if collides_with_walls_numba(self.x, new_y, DRONE_RADIUS, dungeon):
+            self.vx = -self.vx
+            self.vy = -self.vy
+            new_x = self.x + self.vx * dt
+            new_y = self.y + self.vy * dt
+            if collides_with_walls_numba(new_x, self.y, DRONE_RADIUS, dungeon) or collides_with_walls_numba(self.x,
+                                                                                                            new_y,
+                                                                                                            DRONE_RADIUS,
+                                                                                                            dungeon):
                 new_x, new_y = self.x, self.y
-                vx = vy = 0
+                self.vx = self.vy = 0
 
+        # Update position if the new location is valid
         mask = np.kron(np.array(dungeon, dtype=np.int32), np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32))
         if mask[int(new_y), int(new_x)] == 1:
             self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
