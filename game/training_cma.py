@@ -9,7 +9,7 @@ from training_helpers import unflatten_weights, flatten_weights
 from simulation import simulate_game
 
 # --- Fitness Functions for Coevolution ---
-def fitness_player(flat_player_weights, flat_drone_weights, dt, max_time):
+def fitness_player_drone(flat_player_weights, flat_drone_weights, dt, max_time):
     """Evaluate the player fitness when using these candidate weights.
        (Assume higher is better; we will return negative value for minimization.)"""
     # Create player and drone models.
@@ -22,22 +22,7 @@ def fitness_player(flat_player_weights, flat_drone_weights, dt, max_time):
     d_model.set_weights(unflatten_weights(flat_drone_weights, d_template))
 
     player_fitness, drone_fitness, sim_time = simulate_game(p_model, d_model, dt_sim=dt, max_time=max_time)
-    return -player_fitness  # CMA-ES minimizes
-
-
-def fitness_drone(flat_player_weights, flat_drone_weights, dt, max_time):
-    """Evaluate the drone fitness using the given candidate weights.
-       (Return negative fitness so that CMA-ES minimizes.)"""
-    p_model = create_player_model()
-    d_model = create_drone_model()
-    p_template = p_model.get_weights()
-    d_template = d_model.get_weights()
-
-    p_model.set_weights(unflatten_weights(flat_player_weights, p_template))
-    d_model.set_weights(unflatten_weights(flat_drone_weights, d_template))
-
-    player_fitness, drone_fitness, sim_time = simulate_game(p_model, d_model, dt_sim=dt, max_time=max_time)
-    return -drone_fitness  # CMA-ES minimizes
+    return -player_fitness, -drone_fitness  # CMA-ES minimizes, so we negate the fitness values.
 
 
 def evaluate_pairing(args):
@@ -50,8 +35,7 @@ def evaluate_pairing(args):
     player_fits = []
     drone_fits = []
     for _ in range(num_evals):
-        pf = fitness_player(p_candidate, d_candidate, dt, max_time)
-        df = fitness_drone(p_candidate, d_candidate, dt, max_time)
+        pf, df = fitness_player(p_candidate, d_candidate, dt, max_time)
         player_fits.append(pf)
         drone_fits.append(df)
     return np.mean(player_fits), np.mean(drone_fits)
@@ -111,7 +95,7 @@ def run_training(save_path, use_parallel_evaluation=True):
             results = []
             for c, ct in enumerate(candidate_tuples):
                 results.append(evaluate_pairing(ct))
-                print ("\rCompleted candidate: "+str(c)+"/"+str(n), end="")
+                print("\rCompleted candidate: "+str(c)+"/"+str(n), end="")
 
         # Unpack the results.
         player_fit_values = [res[0] for res in results]
