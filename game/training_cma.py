@@ -73,11 +73,13 @@ def run_training(save_path, use_parallel_evaluation=True):
     # Initialize two CMA-ES instances.
     else:
         if "drone.keras" in os.listdir(save_path):
-            initial_drone = flatten_weights(create_drone_model().load(save_path+"drone.keras").get_weights())
+            import tensorflow as tf
+            initial_drone = flatten_weights(tf.keras.models.load_model(save_path+"drone.keras").get_weights())
         else:
             initial_drone = flatten_weights(create_drone_model().get_weights())
         if "player.keras" in os.listdir(save_path):
-            initial_player = flatten_weights(create_player_model().load(save_path+"player.keras").get_weights())
+            import tensorflow as tf
+            initial_player = flatten_weights(tf.keras.models.load_model(save_path+"player.keras").get_weights())
         else:
             initial_player = flatten_weights(create_player_model().get_weights())
     player_sigma = 0.5
