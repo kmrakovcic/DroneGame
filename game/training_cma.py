@@ -67,10 +67,19 @@ def run_training(save_path, use_parallel_evaluation=True):
         save_path += '/'
     if not os.path.exists(save_path):
         os.makedirs(save_path)
+        initial_player = flatten_weights(create_player_model().get_weights())
+        initial_drone = flatten_weights(create_drone_model().get_weights())
 
     # Initialize two CMA-ES instances.
-    initial_player = flatten_weights(create_player_model().get_weights())
-    initial_drone = flatten_weights(create_drone_model().get_weights())
+    else:
+        if "drone.keras" in os.listdir(save_path):
+            initial_drone = flatten_weights(create_drone_model().load(save_path+"drone.keras").get_weights())
+        else:
+            initial_drone = flatten_weights(create_drone_model().get_weights())
+        if "player.keras" in os.listdir(save_path):
+            initial_player = flatten_weights(create_player_model().load(save_path+"player.keras").get_weights())
+        else:
+            initial_player = flatten_weights(create_player_model().get_weights())
     player_sigma = 0.5
     drone_sigma = 0.5
     player_es = cma.CMAEvolutionStrategy(initial_player, player_sigma)
