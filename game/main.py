@@ -6,7 +6,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run game or training modes")
     parser.add_argument('--mode', type=str,
                         choices=['manual', 'train_cma', 'train_ga', 'train_nes'],
-                        default='train_cma')
+                        default='manual')
     args = parser.parse_args()
 
     if args.mode == 'manual':

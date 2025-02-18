@@ -79,6 +79,21 @@ class NES:
         return self.best_candidate, self.best_fitness
 
 
+def evaluate_pairing(args):
+    """
+            Given a tuple (p_candidate, d_candidate, num_evals, dt, max_time),
+            run simulate_game num_evals times and return the average (player_fitness, drone_fitness).
+            (Fitness values are negated so that lower is better.)
+            """
+    p_candidate, d_candidate, num_evals, dt, max_time = args
+    player_fits = []
+    drone_fits = []
+    for _ in range(num_evals):
+        pf, df = fitness_player_drone(p_candidate, d_candidate, dt, max_time)
+        player_fits.append(pf)
+        drone_fits.append(df)
+    return np.mean(player_fits), np.mean(drone_fits)
+
 # ================================================================
 # Replace CMA-ES with NES in your co-evolution loop
 # ================================================================
@@ -117,22 +132,6 @@ def run_training(save_path, use_parallel_evaluation=True):
 
     # Number of independent simulation evaluations per candidate pair.
     num_evals_per_pair = 1
-
-    # The pairing evaluation function remains the same.
-    def evaluate_pairing(args):
-        """
-        Given a tuple (p_candidate, d_candidate, num_evals, dt, max_time),
-        run simulate_game num_evals times and return the average (player_fitness, drone_fitness).
-        (Fitness values are negated so that lower is better.)
-        """
-        p_candidate, d_candidate, num_evals, dt, max_time = args
-        player_fits = []
-        drone_fits = []
-        for _ in range(num_evals):
-            pf, df = fitness_player_drone(p_candidate, d_candidate, dt, max_time)
-            player_fits.append(pf)
-            drone_fits.append(df)
-        return np.mean(player_fits), np.mean(drone_fits)
 
     for generation in range(max_generations):
         start_gen = time.time()
