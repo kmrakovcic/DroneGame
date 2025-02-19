@@ -17,6 +17,11 @@ class Drone:
         self.direction_timer = random.uniform(5, 10)
         self.distance_covered = 0
 
+    def sensors(self, player, drones, dungeon):
+        others = np.array([[d.x, d.y] for d in drones if d is not self], dtype=np.float32)
+        sensor_vec = get_drone_sensor_vector(self.x, self.y, dungeon, (player.x, player.y), others)
+        return sensor_vec
+
     def update_random(self, dt, dungeon, drones):
         self.direction_timer -= dt
         if self.direction_timer <= 0:
@@ -36,11 +41,10 @@ class Drone:
             self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
             self.x, self.y = new_x, new_y
 
-    def update_nn(self, dt, dungeon, player, drones, model, output=None):
+    def update_nn(self, dt, dungeon, player, drones, model=None, output=None):
         # Get network output if not provided
         if output is None:
-            others = np.array([[d.x, d.y] for d in drones if d is not self], dtype=np.float32)
-            sensor_vec = get_drone_sensor_vector(self.x, self.y, dungeon, (player.x, player.y), others)
+            sensor_vec = self.sensors(player, drones, dungeon)
             output = model(sensor_vec.reshape(1, -1)).numpy()[0]
 
         # Interpret network output as acceleration (x and y components)
@@ -95,6 +99,10 @@ class Drone:
         if mask[int(new_y), int(new_x)] == 1:
             self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
             self.x, self.y = new_x, new_y
+
+    def update_manual_acceleration(self, ax, ay, dt, dungeon, player, drones):
+        output = np.array([ax, ay], dtype=np.float32)
+        self.update_nn(dt, dungeon, player, drones, output=output)
 
     def draw(self, screen):
         pygame.draw.circle(screen, COLOR_DRONE, (int(self.x), int(self.y)), DRONE_RADIUS)

@@ -1,11 +1,14 @@
 import numpy as np
 
 from config import SCREEN_WIDTH, SCREEN_HEIGHT
+from entities.drone import get_drone_sensor_vector
+from entities.player import get_player_sensor_vector_vectorized
 from level import new_level
 from utils import distance
 from config import TILE_SIZE, PLAYER_RADIUS, DRONE_RADIUS
 from entities.drone import batch_update_drones
 
+"""
 def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0):
     dungeon, player, drones, exit_rect, player_start = new_level()
     goal = (exit_rect.x + TILE_SIZE / 2, exit_rect.y + TILE_SIZE / 2)
@@ -38,6 +41,93 @@ def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0):
     drone_fitness, player_fitness = calculate_fitness(player, drones, t, player_reached_exit, player_caught,
                                                       SCREEN_WIDTH, SCREEN_HEIGHT, max_time, avg_player_drone_distance,
                                                       player_exit_distance)
+    return player_fitness, drone_fitness, t"""
+
+def simulate_game_step(player, drones, dungeon, exit_rect, goal, player_model, drone_model, dt_sim):
+    """
+    Performs a single simulation step (one dt_sim).
+    Returns updated game state information and termination flags.
+    """
+    player.update_nn(dt_sim, dungeon, drones, goal, player_model)
+    batch_update_drones(drones, dt_sim, dungeon, player, drone_model)
+
+    cur_distance = distance((player.x, player.y), goal)
+
+    # Check if player reaches the exit
+    player_reached_exit = exit_rect.collidepoint(float(player.x), float(player.y))
+
+    # Check if a drone catches the player
+    player_caught = any(
+        distance((player.x, player.y), (drone.x, drone.y)) < (PLAYER_RADIUS + DRONE_RADIUS) for drone in drones
+    )
+
+    return cur_distance, player_reached_exit, player_caught
+
+def simulate_game_step_manual(player_input, drones_input, player, drones, dungeon, exit_rect, goal, dt_sim):
+    """
+    Performs a single simulation step (one dt_sim).
+    Returns updated game state information and termination flags.
+    """
+    player.update_manual_velocity(player_input[0], player_input[1], dt_sim, dungeon)
+    for i, drone in enumerate(drones):
+        drone.update_manual_acceleration(drones_input[i, 0], drones_input[i, 1], dt_sim, dungeon, player, drones)
+
+    cur_distance = distance((player.x, player.y), goal)
+
+    # Check if player reaches the exit
+    player_reached_exit = exit_rect.collidepoint(float(player.x), float(player.y))
+
+    # Check if a drone catches the player
+    player_caught = any(
+        distance((player.x, player.y), (drone.x, drone.y)) < (PLAYER_RADIUS + DRONE_RADIUS) for drone in drones
+    )
+    #drone_sensors = [drone.sensors(player, drones, dungeon) for drone in drones]
+    #player_sensors = player.sensors(dungeon, drones, goal)
+
+    return cur_distance, player_reached_exit, player_caught
+
+def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0):
+    """
+    Runs a full simulation using `simulate_game_step` until a termination condition is met.
+    Returns:
+      - player_fitness
+      - drone_fitness
+      - total simulation time
+    """
+    dungeon, player, drones, exit_rect, player_start = new_level()
+    goal = (exit_rect.x + TILE_SIZE / 2, exit_rect.y + TILE_SIZE / 2)
+
+    avg_player_drone_distance_start = np.mean([distance((player.x, player.y), (d.x, d.y)) for d in drones])
+    player_exit_distance_start = distance((player.x, player.y), goal)
+
+    t = 0.0
+    player_reached_exit = False
+    player_caught = False
+    min_distance = player_exit_distance_start
+
+    while t < max_time:
+        cur_distance, player_reached_exit, player_caught = simulate_game_step(
+            player, drones, dungeon, exit_rect, goal, player_model, drone_model, dt_sim
+        )
+
+        if cur_distance < min_distance:
+            min_distance = cur_distance
+
+        if player_reached_exit or player_caught:
+            break
+
+        t += dt_sim
+
+    avg_player_drone_distance_end = np.mean([distance((player.x, player.y), (d.x, d.y)) for d in drones])
+    player_exit_distance_end = min_distance
+    avg_player_drone_distance = (avg_player_drone_distance_start - avg_player_drone_distance_end) / avg_player_drone_distance_start
+    player_exit_distance = (player_exit_distance_start - player_exit_distance_end) / player_exit_distance_start
+
+    drone_fitness, player_fitness = calculate_fitness(
+        player, drones, t, player_reached_exit, player_caught,
+        SCREEN_WIDTH, SCREEN_HEIGHT, max_time, avg_player_drone_distance, player_exit_distance
+    )
+
     return player_fitness, drone_fitness, t
 
 

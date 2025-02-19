@@ -12,7 +12,15 @@ class Player:
         self.y = y
         self.distance_covered = 0
 
-    def update_manual(self, dt, dungeon):
+    def sensors(self, dungeon, drones, goal):
+        sensor_vec = get_player_sensor_vector_vectorized(
+            self.x, self.y, dungeon,
+            np.array([[d.x, d.y] for d in drones], dtype=np.float32),
+            goal
+        )
+        return sensor_vec
+
+    def update_keyboard(self, dt, dungeon):
         keys = pygame.key.get_pressed()
         dx = dy = 0
         if keys[pygame.K_LEFT] or keys[pygame.K_a]:
@@ -38,11 +46,7 @@ class Player:
 
     def update_nn(self, dt, dungeon, drones, goal, model):
         # Get sensor vector and NN output
-        sensor_vec = get_player_sensor_vector_vectorized(
-            self.x, self.y, dungeon,
-            np.array([[d.x, d.y] for d in drones], dtype=np.float32),
-            goal
-        )
+        sensor_vec = self.sensors(dungeon, drones, goal)
         output = model(sensor_vec.reshape(1, -1)).numpy()[0]
         # Compute velocity from output and scale by PLAYER_SPEED.
         # (Make sure the NN outputs are nonzero; if zero, no movement occurs.)
@@ -50,6 +54,42 @@ class Player:
         if norm:
             vx = (output[0] / norm) * PLAYER_SPEED
             vy = (output[1] / norm) * PLAYER_SPEED
+        else:
+            vx = vy = 0
+
+        # --- Horizontal Movement (x-axis) ---
+        new_x = self.x + vx * dt
+        if collides_with_walls_numba(new_x, self.y, PLAYER_RADIUS, dungeon):
+            # Bounce horizontally: reverse the x-velocity.
+            vx = -vx
+            new_x = self.x + vx * dt
+            # If still colliding after the bounce, cancel horizontal movement.
+            if collides_with_walls_numba(new_x, self.y, PLAYER_RADIUS, dungeon):
+                new_x = self.x
+                vx = 0
+
+        # --- Vertical Movement (y-axis) ---
+        new_y = self.y + vy * dt
+        if collides_with_walls_numba(self.x, new_y, PLAYER_RADIUS, dungeon):
+            # Bounce vertically: reverse the y-velocity.
+            vy = -vy
+            new_y = self.y + vy * dt
+            # If still colliding after the bounce, cancel vertical movement.
+            if collides_with_walls_numba(self.x, new_y, PLAYER_RADIUS, dungeon):
+                new_y = self.y
+                vy = 0
+
+        # Update the player's position and covered distance.
+        mask = np.kron(np.array(dungeon, dtype=np.int32), np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32))
+        if mask[int(new_y), int(new_x)] == 1:
+            self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
+            self.x, self.y = new_x, new_y
+
+    def update_manual_velocity(self, vx, vy, dt, dungeon):
+        norm = math.hypot(vx, vy)
+        if norm:
+            vx = (vx / norm) * PLAYER_SPEED
+            vy = (vy / norm) * PLAYER_SPEED
         else:
             vx = vy = 0
 

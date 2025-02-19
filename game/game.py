@@ -47,7 +47,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
         if USE_PLAYER_NN:
             player.update_nn(dt, dungeon, drones, goal, best_player_model)
         else:
-            player.update_manual(dt, dungeon)
+            player.update_keyboard(dt, dungeon)
         if USE_DRONE_NN:
             batch_update_drones(drones, dt, dungeon, player, best_drone_model)
         else:
