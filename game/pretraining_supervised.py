@@ -3,6 +3,9 @@ import numpy as np
 import random
 import tensorflow as tf
 import concurrent.futures
+import argparse
+
+from tensorflow.python.keras.utils.version_utils import callbacks
 
 from simulation import simulate_game_step_manual
 from level import new_level
@@ -351,11 +354,15 @@ def train_pretrained_models(num_episodes=50, epochs=10, batch_size=1024, dt=0.03
 
     player_model.compile(optimizer='adam', loss='mse')
     drone_model.compile(optimizer='adam', loss='mse')
+    reduce_on_plateau = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=20)
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=80, restore_best_weights=True)
 
     print("Pretraining player model...")
-    player_model.fit(player_x, player_y, epochs=epochs, batch_size=batch_size, verbose=2, shuffle=True, validation_split=0.2)
+    player_model.fit(player_x, player_y, epochs=epochs, batch_size=batch_size, verbose=2, shuffle=True, validation_split=0.2,
+                     callbacks=[reduce_on_plateau, early_stopping])
     print("Pretraining drone model...")
-    drone_model.fit(drone_x, drone_y, epochs=epochs, batch_size=batch_size, verbose=2, shuffle=True, validation_split=0.2)
+    drone_model.fit(drone_x, drone_y, epochs=epochs, batch_size=batch_size, verbose=2, shuffle=True, validation_split=0.2,
+                    callbacks=[reduce_on_plateau, early_stopping])
 
     return player_model, drone_model
 
@@ -386,7 +393,7 @@ def main():
     if args.save_path[-1] != '/':
         args.save_path += '/'
 
-    model_player, model_drone = train_pretrained_models(200, 300)
+    model_player, model_drone = train_pretrained_models(args.episodes, args.epochs)
     model_player.save(args.save_path+"player.keras")
     model_drone.save(args.save_path+"drone.keras")
 # --- Example Usage ---

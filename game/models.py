@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-def create_player_model(input_shape=12):
+def create_player_model(input_shape=20):
     model = tf.keras.models.Sequential([
         tf.keras.layers.Input(shape=(input_shape,)),
         tf.keras.layers.Dense(8, activation='relu'),
@@ -8,7 +8,7 @@ def create_player_model(input_shape=12):
     ])
     return model
 
-def create_drone_model(input_shape=12):
+def create_drone_model(input_shape=20):
     model = tf.keras.models.Sequential([
         tf.keras.layers.Input(shape=(input_shape,)),
         tf.keras.layers.Dense(8, activation='relu'),

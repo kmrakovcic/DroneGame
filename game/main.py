@@ -6,12 +6,12 @@ def main():
     parser = argparse.ArgumentParser(description="Run game or training modes")
     parser.add_argument('--mode', type=str,
                         choices=['manual', 'train_cma', 'train_ga', 'train_nes'],
-                        default='manual')
+                        default='train_cma')
     parser.add_argument('--epochs', type=int, default=1000)
     args = parser.parse_args()
 
     if args.mode == 'manual':
-        run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_nes/")
+        run_manual_mode(USE_PLAYER_NN=False, USE_DRONE_NN=True, path="../models_nes/")
     elif args.mode == 'train_cma':
         import training_cma
         training_cma.run_training("../models_cma/", epochs=args.epochs, use_parallel_evaluation=True)
