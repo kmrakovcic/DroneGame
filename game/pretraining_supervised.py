@@ -376,12 +376,22 @@ def plot_paths_dungeon(dungeon, player, drones, exit_rect):
     plt.imshow(dungeon_mask)
     plt.show()
 
+def main():
+    parser = argparse.ArgumentParser(description="Run game or training modes")
+    parser.add_argument('--episodes', type=int, default=100000)
+    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--save_path', type=str, default="../models_nes/")
+    args = parser.parse_args()
+
+    if args.save_path[-1] != '/':
+        args.save_path += '/'
+
+    model_player, model_drone = train_pretrained_models(200, 300)
+    model_player.save(args.save_path+"player.keras")
+    model_drone.save(args.save_path+"drone.keras")
 # --- Example Usage ---
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    model_player, model_drone = train_pretrained_models(200, 300)
-    model_player.save("../models_nes/player.keras")
-    model_drone.save("../models_nes/drone.keras")
+    main()
 
 
 
