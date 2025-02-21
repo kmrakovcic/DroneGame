@@ -387,7 +387,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run game or training modes")
     parser.add_argument('--episodes', type=int, default=100000)
     parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--save_path', type=str, default="../models_nes/")
+    parser.add_argument('--save_path', type=str, default="../models_cma/")
     args = parser.parse_args()
 
     if args.save_path[-1] != '/':
