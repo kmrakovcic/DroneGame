@@ -89,8 +89,19 @@ def run_training(save_path, epochs, use_parallel_evaluation=True):
 
         # Evaluate all candidate pairs in parallel.
         if use_parallel_evaluation:
-            with concurrent.futures.ProcessPoolExecutor() as executor:
-                results = list(executor.map(evaluate_pairing, candidate_tuples))
+            restarts = 0
+            while True:
+                try:
+                    with concurrent.futures.ProcessPoolExecutor() as executor:
+                        results = list(executor.map(evaluate_pairing, candidate_tuples, timeout=600))
+                    break
+
+                except concurrent.futures.TimeoutError:
+                    if restarts <= 5:
+                        restarts += 1
+                        print(f"Timeout occurred in epoch {epoch + 1}! Restarting the epoch...")
+                    else:
+                        break
         else:
             results = []
             for c, ct in enumerate(candidate_tuples):
