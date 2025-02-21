@@ -3,11 +3,11 @@ import math
 import random
 import numpy as np
 from config import DRONE_SPEED, DRONE_RADIUS, SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_DRONE, TILE_SIZE
-from utils import collides_with_walls_numba, distance, get_left_sensor, get_right_sensor, get_up_sensor, get_down_sensor
+from utils import collides_with_walls_numba, distance, get_sensor_at_angle
 
 
 class Drone:
-    def __init__(self, x, y):
+    def __init__(self, x, y, sensors_angles=[0, 45, 90, 135, 180, 225, 270, 315]):
         self.x = x
         self.y = y
         self.vx = 0
@@ -16,13 +16,19 @@ class Drone:
         self.current_dx, self.current_dy = random.choice(directions)
         self.direction_timer = random.uniform(5, 10)
         self.distance_covered = 0
+        self.sensor_angles = sensors_angles
+        self.sensors = None
 
-    def sensors(self, player, drones, dungeon):
-        others = np.array([[d.x, d.y] for d in drones if d is not self], dtype=np.float32)
-        sensor_vec = get_drone_sensor_vector(self.x, self.y, dungeon, (player.x, player.y), others)
-        return sensor_vec
+    def get_sensors(self, player, drones, dungeon):
+        if self.sensors is not None:
+            return self.sensors # return cached sensors
+        else:
+            others = np.array([[d.x, d.y] for d in drones if d is not self], dtype=np.float32)
+            self.sensors = get_drone_sensor_vector(self.x, self.y, self.sensor_angles, dungeon, (player.x, player.y), others)
+            return self.sensors
 
     def update_random(self, dt, dungeon, drones):
+        self.sensors = None
         self.direction_timer -= dt
         if self.direction_timer <= 0:
             directions = [(dx, dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if dx or dy]
@@ -44,9 +50,10 @@ class Drone:
     def update_nn(self, dt, dungeon, player, drones, model=None, output=None):
         # Get network output if not provided
         if output is None:
-            sensor_vec = self.sensors(player, drones, dungeon)
+            sensor_vec = self.get_sensors(player, drones, dungeon)
             output = model(sensor_vec.reshape(1, -1)).numpy()[0]
 
+        self.sensors = None
         # Interpret network output as acceleration (x and y components)
         accel_x = output[0]
         accel_y = output[1]
@@ -102,35 +109,28 @@ class Drone:
 
     def update_manual_acceleration(self, ax, ay, dt, dungeon, player, drones):
         output = np.array([ax, ay], dtype=np.float32)
+        self.sensors = None
         self.update_nn(dt, dungeon, player, drones, output=output)
 
     def draw(self, screen):
         pygame.draw.circle(screen, COLOR_DRONE, (int(self.x), int(self.y)), DRONE_RADIUS)
 
 def batch_update_drones(drones, dt, dungeon, player, models):
-    sensor_vectors = np.array([get_drone_sensor_vector(d.x, d.y, dungeon, (player.x, player.y),
-                                                       np.array([[o.x, o.y] for o in drones if o is not d],
-                                                                dtype=np.float32))
+    sensor_vectors = np.array([d.get_sensors(player, drones, dungeon)
                                for d in drones], dtype=np.float32)
     outputs = models(sensor_vectors).numpy()
     for i, drone in enumerate(drones):
         drone.update_nn(dt, dungeon, player, drones, models, outputs[i])
     return outputs
 
-def get_drone_sensor_vector(x, y, dungeon, player_pos, drones_pos):
-    left_d, left_t = get_left_sensor(x, y, dungeon, player_pos, drones_pos)
-    right_d, right_t = get_right_sensor(x, y, dungeon, player_pos, drones_pos)
-    up_d, up_t = get_up_sensor(x, y, dungeon, player_pos, drones_pos)
-    down_d, down_t = get_down_sensor(x, y, dungeon, player_pos, drones_pos)
-    left_norm = left_d / SCREEN_WIDTH
-    right_norm = right_d / SCREEN_WIDTH
-    up_norm = up_d / SCREEN_HEIGHT
-    down_norm = down_d / SCREEN_HEIGHT
-    drone_pos_norm = [x / SCREEN_WIDTH, y / SCREEN_HEIGHT]
-    player_pos_norm = [player_pos[0] / SCREEN_WIDTH, player_pos[1] / SCREEN_HEIGHT]
-    sensor_vector = np.array([left_norm, right_norm, up_norm, down_norm,
-                              left_t, right_t, up_t, down_t,
-                              drone_pos_norm[0], drone_pos_norm[1],
-                              player_pos_norm[0], player_pos_norm[1]], dtype=np.float32)
+def get_drone_sensor_vector(x, y, angles, dungeon, player_pos, drones_pos):
+    max_len = math.hypot(SCREEN_WIDTH, SCREEN_HEIGHT)
+    sensor_vector = np.empty(len(angles) * 2 + 4, dtype=np.float32)
+    for i, angle in enumerate(angles):
+        distance, type = get_sensor_at_angle(x, y, angle, dungeon, player_pos, drones_pos)
+        distance_norm = distance / max_len
+        sensor_vector[i] = distance_norm
+        sensor_vector[i + len(angles)] = type
+    sensor_vector[-4:] = np.array([x / SCREEN_WIDTH, y / SCREEN_HEIGHT,
+                                      player_pos[0] / SCREEN_WIDTH, player_pos[1] / SCREEN_HEIGHT], dtype=np.float32)
     return sensor_vector
-

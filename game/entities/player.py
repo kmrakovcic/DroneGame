@@ -2,25 +2,30 @@ import pygame
 import math
 import numpy as np
 from config import PLAYER_SPEED, PLAYER_RADIUS, SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_PLAYER, TILE_SIZE, MAP_WIDTH, MAP_HEIGHT
-from utils import collides_with_walls_numba, distance
+from utils import collides_with_walls_numba, distance, get_sensor_at_angle
 
 
 # === Game Entities ===
 class Player:
-    def __init__(self, x, y):
+    def __init__(self, x, y, sensors_angles=[0, 45, 90, 135, 180, 225, 270, 315]):
         self.x = x
         self.y = y
         self.distance_covered = 0
+        self.sensor_angles = sensors_angles
+        self.sensors = None
 
-    def sensors(self, dungeon, drones, goal):
-        sensor_vec = get_player_sensor_vector_vectorized(
-            self.x, self.y, dungeon,
-            np.array([[d.x, d.y] for d in drones], dtype=np.float32),
-            goal
-        )
-        return sensor_vec
+    def get_sensors(self, dungeon, drones, goal):
+        if self.sensors is not None:
+            return self.sensors
+        else:
+            self.sensors = get_player_sensor_vector(
+                self.x, self.y, self.sensor_angles, dungeon,
+                np.array([[d.x, d.y] for d in drones], dtype=np.float32),
+                goal)
+            return self.sensors
 
     def update_keyboard(self, dt, dungeon):
+        self.sensors=None
         keys = pygame.key.get_pressed()
         dx = dy = 0
         if keys[pygame.K_LEFT] or keys[pygame.K_a]:
@@ -46,8 +51,9 @@ class Player:
 
     def update_nn(self, dt, dungeon, drones, goal, model):
         # Get sensor vector and NN output
-        sensor_vec = self.sensors(dungeon, drones, goal)
+        sensor_vec = self.get_sensors(dungeon, drones, goal)
         output = model(sensor_vec.reshape(1, -1)).numpy()[0]
+        self.sensors = None
         # Compute velocity from output and scale by PLAYER_SPEED.
         # (Make sure the NN outputs are nonzero; if zero, no movement occurs.)
         norm = math.hypot(output[0], output[1])
@@ -86,6 +92,7 @@ class Player:
             self.x, self.y = new_x, new_y
 
     def update_manual_velocity(self, vx, vy, dt, dungeon):
+        self.sensors = None
         norm = math.hypot(vx, vy)
         if norm:
             vx = (vx / norm) * PLAYER_SPEED
@@ -124,7 +131,19 @@ class Player:
     def draw(self, screen):
         pygame.draw.circle(screen, COLOR_PLAYER, (int(self.x), int(self.y)), PLAYER_RADIUS)
 
-def get_player_sensor_vector_vectorized(x, y, dungeon, drones_pos, goal):
+def get_player_sensor_vector(x, y, angles, dungeon, drones_pos, goal):
+    max_len = math.hypot(SCREEN_WIDTH, SCREEN_HEIGHT)
+    sensor_vector = np.empty(len(angles) * 2 + 4, dtype=np.float32)
+    for i, angle in enumerate(angles):
+        distance, type = get_sensor_at_angle(x, y, angle, dungeon, (x, y), drones_pos)
+        distance_norm = distance / max_len
+        sensor_vector[i] = distance_norm
+        sensor_vector[i + len(angles)] = type
+    sensor_vector[-4:] = np.array([x / SCREEN_WIDTH, y / SCREEN_HEIGHT,
+                                      goal[0] / SCREEN_WIDTH, goal[1] / SCREEN_HEIGHT], dtype=np.float32)
+    return sensor_vector
+
+def get_player_sensor_vector_vectorized1(x, y, dungeon, drones_pos, goal):
     tile_x = int(x // TILE_SIZE)
     tile_y = int(y // TILE_SIZE)
     row = dungeon[tile_y, :]

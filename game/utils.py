@@ -1,7 +1,7 @@
 import math
 import numpy as np
 import numba
-from config import TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT
+from config import TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT, PLAYER_RADIUS, DRONE_RADIUS
 
 @numba.njit
 def circle_rect_collision_numba(cx, cy, radius, left, top, right, bottom):
@@ -50,113 +50,106 @@ def one_hot(index, length):
         vec[index] = 1
     return vec
 
-# === (Unchanged) Sensor Functions for Drones and Player ===
-# [Keep your sensor functions as is...]
-# For brevity, these functions are unchanged:
-def get_left_sensor(x, y, dungeon, player_pos, drones_pos):
-    tile_x = int(x // TILE_SIZE)
-    tile_y = int(y // TILE_SIZE)
-    row = dungeon[tile_y, :]
-    if tile_x > 0:
-        indices = np.arange(tile_x)
-        wall_candidates = indices[row[indices] == 0]
-        wall_dist = x - ((wall_candidates[-1] + 1) * TILE_SIZE) if wall_candidates.size > 0 else x
-    else:
-        wall_dist = x
-    candidate = wall_dist
-    sensor_type = 0.0
-    if int(player_pos[1] // TILE_SIZE) == tile_y and player_pos[0] < x:
-        cand = x - player_pos[0]
-        if cand < candidate:
-            candidate = cand
-            sensor_type = 0.5
-    if drones_pos.size > 0:
-        mask = ((drones_pos[:, 1] // TILE_SIZE).astype(int) == tile_y) & (drones_pos[:, 0] < x)
-        if np.any(mask):
-            cand_arr = x - drones_pos[mask, 0]
-            min_cand = np.min(cand_arr)
-            if min_cand < candidate:
-                candidate = min_cand
-                sensor_type = 1.0
-    return candidate, sensor_type
+@numba.njit
+def sensor_check_walls(x, y, angle, dungeon, max_distance=SCREEN_WIDTH):
+    """
+    Raycasting sensor that moves tile by tile instead of small steps.
+    Ensures exact tile positions are used to match the original sensor functions.
 
-def get_right_sensor(x, y, dungeon, player_pos, drones_pos):
-    tile_x = int(x // TILE_SIZE)
-    tile_y = int(y // TILE_SIZE)
-    row = dungeon[tile_y, :]
-    if tile_x < MAP_WIDTH - 1:
-        indices = np.arange(tile_x + 1, MAP_WIDTH)
-        wall_candidates = indices[row[indices] == 0]
-        wall_dist = (wall_candidates[0] * TILE_SIZE) - x if wall_candidates.size > 0 else SCREEN_WIDTH - x
-    else:
-        wall_dist = SCREEN_WIDTH - x
-    candidate = wall_dist
-    sensor_type = 0.0
-    if int(player_pos[1] // TILE_SIZE) == tile_y and player_pos[0] > x:
-        cand = player_pos[0] - x
-        if cand < candidate:
-            candidate = cand
-            sensor_type = 0.5
-    if drones_pos.size > 0:
-        mask = ((drones_pos[:, 1] // TILE_SIZE).astype(int) == tile_y) & (drones_pos[:, 0] > x)
-        if np.any(mask):
-            cand_arr = drones_pos[mask, 0] - x
-            min_cand = np.min(cand_arr)
-            if min_cand < candidate:
-                candidate = min_cand
-                sensor_type = 1.0
-    return candidate, sensor_type
+    Returns:
+        - Distance to the nearest obstacle (normalized).
+          - Type of obstacle detected (0 = wall, 0.5 = player, 1 = drone).
+    """
+    dx = math.cos(angle)
+    dy = math.sin(angle)
 
-def get_up_sensor(x, y, dungeon, player_pos, drones_pos):
+    # Start in current tile
     tile_x = int(x // TILE_SIZE)
     tile_y = int(y // TILE_SIZE)
-    col = dungeon[:, tile_x]
-    if tile_y > 0:
-        indices = np.arange(tile_y)
-        wall_candidates = indices[col[indices] == 0]
-        wall_dist = y - ((wall_candidates[-1] + 1) * TILE_SIZE) if wall_candidates.size > 0 else y
-    else:
-        wall_dist = y
-    candidate = wall_dist
-    sensor_type = 0.0
-    if int(player_pos[0] // TILE_SIZE) == tile_x and player_pos[1] < y:
-        cand = y - player_pos[1]
-        if cand < candidate:
-            candidate = cand
-            sensor_type = 0.5
-    if drones_pos.size > 0:
-        mask = ((drones_pos[:, 0] // TILE_SIZE).astype(int) == tile_x) & (drones_pos[:, 1] < y)
-        if np.any(mask):
-            cand_arr = y - drones_pos[mask, 1]
-            min_cand = np.min(cand_arr)
-            if min_cand < candidate:
-                candidate = min_cand
-                sensor_type = 1.0
-    return candidate, sensor_type
+    #print ("Angle ", math.degrees(angle))
+    #print("Start tile ", tile_x, tile_y)
 
-def get_down_sensor(x, y, dungeon, player_pos, drones_pos):
-    tile_x = int(x // TILE_SIZE)
-    tile_y = int(y // TILE_SIZE)
-    col = dungeon[:, tile_x]
-    if tile_y < MAP_HEIGHT - 1:
-        indices = np.arange(tile_y + 1, MAP_HEIGHT)
-        wall_candidates = indices[col[indices] == 0]
-        wall_dist = (wall_candidates[0] * TILE_SIZE) - y if wall_candidates.size > 0 else SCREEN_HEIGHT - y
+    # Step increments in tile space
+    step_x = 1 if dx > 0 else -1
+    step_y = 1 if dy > 0 else -1
+
+    # Next tile boundary crossing points (in pixel space)
+    next_x = (tile_x + (step_x > 0)) * TILE_SIZE
+    next_y = (tile_y + (step_y > 0)) * TILE_SIZE
+
+    # Distance to next tile boundary
+    t_max_x = (next_x - x) / dx if dx != 0 else float('inf')
+    t_max_y = (next_y - y) / dy if dy != 0 else float('inf')
+
+    # How much distance is needed to cross a tile in x or y direction
+    t_delta_x = abs(TILE_SIZE / dx) if dx != 0 else float('inf')
+    t_delta_y = abs(TILE_SIZE / dy) if dy != 0 else float('inf')
+
+    distance = 0.0
+
+    while distance < max_distance:
+        # Move to the next tile
+        if t_max_x < t_max_y:
+            tile_x += step_x
+            distance = t_max_x
+            t_max_x += t_delta_x
+        else:
+            tile_y += step_y
+            distance = t_max_y
+            t_max_y += t_delta_y
+
+        # Out of bounds check
+        if tile_x < 0 or tile_x >= MAP_WIDTH or tile_y < 0 or tile_y >= MAP_HEIGHT:
+            return distance, 0  # Wall at boundary
+
+        # Check for walls
+        if dungeon[tile_y, tile_x] == 0:
+            #print ("End tile ", tile_x, tile_y)
+            return distance, 0  # Hit a wall
+
+    return max_distance, 0  # No obstacle found
+
+def sensor_check_entities(x, y, angle, entities_x, entities_y, entities_radius, entities_type):
+    """
+    
+    :param x: 
+    :param y: 
+    :param entities_x: 
+    :param entities_y: 
+    :return: 
+    """
+    angle *= -1
+    angles_to_entities = np.arctan2(entities_y - y, entities_x - x)
+    distance_to_entities = np.sqrt(np.square(entities_x - x) + np.square(entities_y - y))
+    paralax_angle = np.arctan2(entities_radius, distance_to_entities)
+    seen_mask = np.abs(angles_to_entities - angle) < paralax_angle
+    if not np.any(seen_mask):
+        return None, None
     else:
-        wall_dist = SCREEN_HEIGHT - y
-    candidate = wall_dist
-    sensor_type = 0.0
-    if int(player_pos[0] // TILE_SIZE) == tile_x and player_pos[1] > y:
-        cand = player_pos[1] - y
-        if cand < candidate:
-            candidate = cand
-            sensor_type = 0.5
-    if drones_pos.size > 0:
-        mask = ((drones_pos[:, 0] // TILE_SIZE).astype(int) == tile_x) & (drones_pos[:, 1] > y)
-        if np.any(mask):
-            cand_arr = drones_pos[mask, 1] - y
-            min_cand = np.min(cand_arr)
-            if min_cand < candidate:
-                candidate = min_cand
-                sensor_type = 1.0
-    return candidate, sensor_type
+        return np.min(distance_to_entities[seen_mask]), entities_type[np.argmin(distance_to_entities[seen_mask])]
+
+def get_sensor_at_angle(x, y, angle, dungeon, player_pos, drones_pos, max_distance=SCREEN_WIDTH):
+    angle_rad = math.radians(angle)
+    dist_w, type_w = sensor_check_walls(x, y, angle_rad, dungeon, max_distance)
+    ent_x = []
+    ent_y = []
+    ent_rad = []
+    ent_type = []
+    for dx, dy in drones_pos:
+        if dx != x and dy != y:
+            ent_x.append(dx)
+            ent_y.append(dy)
+            ent_rad.append(DRONE_RADIUS)
+            ent_type.append(1)
+    if player_pos[0] != x and player_pos[1] != y:
+        ent_x.append(player_pos[0])
+        ent_y.append(player_pos[1])
+        ent_rad.append(PLAYER_RADIUS)
+        ent_type.append(0.5)
+    dist_e, type_e = sensor_check_entities(x, y, angle_rad, np.array(ent_x), np.array(ent_y), np.array(ent_rad), np.array(ent_type))
+    if dist_e is None:
+        return dist_w, type_w
+    elif dist_w < dist_e:
+        return dist_w, type_w
+    else:
+        return dist_e, type_e

@@ -2,12 +2,11 @@ import math
 import numpy as np
 import random
 import tensorflow as tf
+import concurrent.futures
 
 from simulation import simulate_game_step_manual
 from level import new_level
 from models import create_player_model, create_drone_model
-from entities.player import get_player_sensor_vector_vectorized
-from entities.drone import get_drone_sensor_vector
 
 # --- Assume your constants, tile sizes, and sensor functions are defined elsewhere ---
 TILE_SIZE = 32
@@ -138,7 +137,113 @@ def find_best_forward_waypoint(player_pos, pixel_path, current_step, max_distanc
 
     return best_index, best_waypoint
 
-def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0):
+def generate_episode(dt, max_time):
+    player_inputs = []
+    player_outputs = []
+    drone_inputs = []
+    drone_outputs = []
+    dungeon, player, drones, exit_rect, _ = new_level()
+    exit_center = (exit_rect.x + TILE_SIZE / 2, exit_rect.y + TILE_SIZE / 2)
+    goal = (exit_rect.x + TILE_SIZE / 2, exit_rect.y + TILE_SIZE / 2)
+    exit_cell = (int(exit_center[1] // TILE_SIZE), int(exit_center[0] // TILE_SIZE))
+    grid = np.array(dungeon)
+    t = 0.0
+    player_reached_exit = False
+    player_caught = False
+    step = 0
+    drone_steps = [0] * len(drones)
+
+    player_cell = (int(player.y // TILE_SIZE), int(player.x // TILE_SIZE))
+    path_player = astar(grid, player_cell, exit_cell)
+    pixel_path_player = get_pixel_path(path_player, TILE_SIZE)
+    while (t < max_time) and (not player_reached_exit) and (not player_caught):
+        # Collect sensor data before update
+        drone_sensors = [drone.get_sensors(player, drones, dungeon) for drone in drones]
+        player_sensors = player.get_sensors(dungeon, drones, goal)
+
+        max_distance = PLAYER_SPEED * dt
+        step, target_pixel = find_best_forward_waypoint((player.x, player.y), pixel_path_player, step, max_distance)
+        dx = target_pixel[0] - player.x
+        dy = target_pixel[1] - player.y
+        norm = math.hypot(dx, dy)
+        if norm > 0:
+            player_input = np.array([dx / norm, dy / norm], dtype=np.float32)
+        else:
+            player_input = np.array([0, 0], dtype=np.float32)
+
+        # === DRONE PATH FOLLOWING TO PLAYER'S EXACT POSITION ===
+        drone_input = []
+        for i, drone in enumerate(drones):
+            drone_cell = (int(drone.y // TILE_SIZE), int(drone.x // TILE_SIZE))
+            player_cell = (int(player.y // TILE_SIZE), int(player.x // TILE_SIZE))
+
+            # Compute A* path for each drone towards the **player's tile**
+            path_drone = astar(grid, drone_cell, player_cell)
+            pixel_path_drone = get_pixel_path(path_drone, TILE_SIZE)
+
+            if len(pixel_path_drone) > 0:
+                # Find the best reachable waypoint within dt
+                drone_steps[i], target_drone_pixel = find_best_forward_waypoint(
+                    (drone.x, drone.y), pixel_path_drone, drone_steps[i], DRONE_SPEED * dt
+                )
+
+                # Instead of stopping at the grid center, move towards **player's exact position**
+                final_target_x, final_target_y = player.x, player.y
+                if drone_steps[i] >= len(pixel_path_drone) - 1:
+                    target_drone_pixel = (final_target_x, final_target_y)  # Adjust to exact position
+
+                # Compute acceleration (a_x, a_y) for the drone
+                d_vx = (target_drone_pixel[0] - drone.x) / dt
+                d_vy = (target_drone_pixel[1] - drone.y) / dt
+                ax = (d_vx - drone.vx) / dt  # Compute acceleration (a = dv/dt)
+                ay = (d_vy - drone.vy) / dt
+                norm_d = math.hypot(ax, ay)  # * DRONE_SPEED
+                ax = ax / norm_d if norm_d > 0 else 0
+                ay = ay / norm_d if norm_d > 0 else 0
+
+                drone_input.append([ax, ay])
+            else:
+                drone_input.append([0, 0])  # No movement if no valid path
+            drone_inputs.append(drone_sensors[i])
+            drone_outputs.append(drone_input[i])
+        drone_input = np.array(drone_input, dtype=np.float32)
+        # Run one step of the simulation
+        cur_distance, player_reached_exit, player_caught = simulate_game_step_manual(
+            player_input, drone_input, player, drones, dungeon, exit_rect, goal, dt)
+
+        player_outputs.append(player_input)
+        player_inputs.append(player_sensors)
+        t += dt
+    return np.array(player_inputs, dtype=np.float16), np.array(player_outputs, dtype=np.float16), \
+        np.array(drone_inputs, dtype=np.float16), np.array(drone_outputs, dtype=np.float16)
+
+def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=True):
+    """Runs multiple simulation episodes in parallel to collect training data."""
+    player_inputs = []
+    player_outputs = []
+    drone_inputs = []
+    drone_outputs = []
+
+    if parallel:
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            results = list(executor.map(generate_episode, [dt] * num_episodes, [max_time] * num_episodes))
+
+        for p_in, p_out, d_in, d_out in results:
+            player_inputs.append(p_in)
+            player_outputs.append(p_out)
+            drone_inputs.append(d_in)
+            drone_outputs.append(d_out)
+        return (np.concatenate(player_inputs), np.concatenate(player_outputs)), (np.concatenate(drone_inputs), np.concatenate(drone_outputs))
+    else:
+        for episode in range(num_episodes):
+            p_in, p_out, d_in, d_out = generate_episode(dt, max_time)
+            player_inputs.append(p_in)
+            player_outputs.append(p_out)
+            drone_inputs.append(d_in)
+            drone_outputs.append(d_out)
+        return (np.concatenate(player_inputs), np.concatenate(player_outputs)), (np.concatenate(drone_inputs), np.concatenate(drone_outputs))
+
+def generate_training_data1(num_episodes=50, dt=0.033, max_time=60.0):
     """
     Runs multiple simulation episodes to collect training data.
     Returns:
@@ -172,8 +277,8 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0):
             drones_pos = np.array([[d.x, d.y] for d in drones], dtype=np.float32)
             drones_vel = np.array([[d.vx, d.vy] for d in drones], dtype=np.float32)
 
-            drone_sensors = [drone.sensors(player, drones, dungeon) for drone in drones]
-            player_sensors = player.sensors(dungeon, drones, goal)
+            drone_sensors = [drone.get_sensors(player, drones, dungeon) for drone in drones]
+            player_sensors = player.get_sensors(dungeon, drones, goal)
 
             max_distance = PLAYER_SPEED * dt
             step, target_pixel = find_best_forward_waypoint((player.x, player.y), pixel_path_player, step, max_distance)
@@ -241,8 +346,8 @@ def train_pretrained_models(num_episodes=50, epochs=10, batch_size=1024, dt=0.03
     (player_x, player_y), (drone_x, drone_y) = generate_training_data(num_episodes, dt, max_time)
 
     # Create models (assume these functions are defined in your models module).
-    player_model = create_player_model()
-    drone_model = create_drone_model()
+    player_model = create_player_model(player_x.shape[1])
+    drone_model = create_drone_model(drone_x.shape[1])
 
     player_model.compile(optimizer='adam', loss='mse')
     drone_model.compile(optimizer='adam', loss='mse')
@@ -274,18 +379,7 @@ def plot_paths_dungeon(dungeon, player, drones, exit_rect):
 # --- Example Usage ---
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    # Pretrain the models.
-    """pretrained_player, pretrained_drone = train_pretrained_models(
-        num_episodes=50,
-        max_steps=100,
-        dt=0.033,
-        epochs=100,
-        batch_size=32
-    )
-    # Save the pretrained models for later use.
-    pretrained_player.save("../models_cma/player.keras")
-    pretrained_drone.save("../models_cma/drone.keras")"""
-    model_player, model_drone = train_pretrained_models(20, 200)
+    model_player, model_drone = train_pretrained_models(200, 300)
     model_player.save("../models_nes/player.keras")
     model_drone.save("../models_nes/drone.keras")
 

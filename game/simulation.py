@@ -1,8 +1,6 @@
 import numpy as np
 
 from config import SCREEN_WIDTH, SCREEN_HEIGHT
-from entities.drone import get_drone_sensor_vector
-from entities.player import get_player_sensor_vector_vectorized
 from level import new_level
 from utils import distance
 from config import TILE_SIZE, PLAYER_RADIUS, DRONE_RADIUS
@@ -81,8 +79,6 @@ def simulate_game_step_manual(player_input, drones_input, player, drones, dungeo
     player_caught = any(
         distance((player.x, player.y), (drone.x, drone.y)) < (PLAYER_RADIUS + DRONE_RADIUS) for drone in drones
     )
-    #drone_sensors = [drone.sensors(player, drones, dungeon) for drone in drones]
-    #player_sensors = player.sensors(dungeon, drones, goal)
 
     return cur_distance, player_reached_exit, player_caught
 
