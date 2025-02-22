@@ -165,12 +165,19 @@ def generate_episode(dt, max_time):
         player_sensors = player.get_sensors(dungeon, drones, goal)
 
         max_distance = PLAYER_SPEED * dt
-        step, target_pixel = find_best_forward_waypoint((player.x, player.y), pixel_path_player, step, max_distance)
-        dx = target_pixel[0] - player.x
-        dy = target_pixel[1] - player.y
-        norm = math.hypot(dx, dy)
+        step, target_player_pixel = find_best_forward_waypoint((player.x, player.y), pixel_path_player, step,
+                                                               max_distance)
+
+        d_vx = (target_player_pixel[0] - player.x) / dt
+        d_vy = (target_player_pixel[1] - player.y) / dt
+        ax = (d_vx - player.vx) / dt  # Compute acceleration (a = dv/dt)
+        ay = (d_vy - player.vy) / dt
+        norm_d = math.hypot(ax, ay)  # * DRONE_SPEED
+        ax = ax / norm_d if norm_d > 0 else 0
+        ay = ay / norm_d if norm_d > 0 else 0
+        norm = math.hypot(ax, ay)
         if norm > 0:
-            player_input = np.array([dx / norm, dy / norm], dtype=np.float32)
+            player_input = np.array([ax / norm, ay / norm], dtype=np.float32)
         else:
             player_input = np.array([0, 0], dtype=np.float32)
 
@@ -246,102 +253,6 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
             drone_outputs.append(d_out)
         return (np.concatenate(player_inputs), np.concatenate(player_outputs)), (np.concatenate(drone_inputs), np.concatenate(drone_outputs))
 
-def generate_training_data1(num_episodes=50, dt=0.033, max_time=60.0):
-    """
-    Runs multiple simulation episodes to collect training data.
-    Returns:
-      - player_data: (sensor input, desired velocity)
-      - drone_data: (sensor input, desired acceleration)
-    """
-    player_inputs = []
-    player_outputs = []
-    drone_inputs = []
-    drone_outputs = []
-
-    for episode in range(num_episodes):
-        dungeon, player, drones, exit_rect, _ = new_level()
-        exit_center = (exit_rect.x + TILE_SIZE / 2, exit_rect.y + TILE_SIZE / 2)
-        goal = (exit_rect.x + TILE_SIZE / 2, exit_rect.y + TILE_SIZE / 2)
-        exit_cell = (int(exit_center[1] // TILE_SIZE), int(exit_center[0] // TILE_SIZE))
-        grid = np.array(dungeon)
-        t = 0.0
-        player_reached_exit = False
-        player_caught = False
-        step = 0
-        drone_steps = [0] * len(drones)
-
-        player_cell = (int(player.y // TILE_SIZE), int(player.x // TILE_SIZE))
-        path_player = astar(grid, player_cell, exit_cell)
-        pixel_path_player = get_pixel_path(path_player, TILE_SIZE)
-
-        while (t < max_time) and (not player_reached_exit) and (not player_caught):
-            print("\rEpisode: "+str(episode+1)+"/"+str(num_episodes)+" Time: "+str(round(t, 2)), end="")
-            # Collect sensor data before update
-            drones_pos = np.array([[d.x, d.y] for d in drones], dtype=np.float32)
-            drones_vel = np.array([[d.vx, d.vy] for d in drones], dtype=np.float32)
-
-            drone_sensors = [drone.get_sensors(player, drones, dungeon) for drone in drones]
-            player_sensors = player.get_sensors(dungeon, drones, goal)
-
-            max_distance = PLAYER_SPEED * dt
-            step, target_pixel = find_best_forward_waypoint((player.x, player.y), pixel_path_player, step, max_distance)
-            dx = target_pixel[0] - player.x
-            dy = target_pixel[1] - player.y
-            norm = math.hypot(dx, dy)
-            if norm > 0:
-                player_input = np.array([dx / norm, dy / norm], dtype=np.float32)
-            else:
-                player_input = np.array([0, 0], dtype=np.float32)
-
-            # === DRONE PATH FOLLOWING TO PLAYER'S EXACT POSITION ===
-            drone_input = []
-            for i, drone in enumerate(drones):
-                drone_cell = (int(drone.y // TILE_SIZE), int(drone.x // TILE_SIZE))
-                player_cell = (int(player.y // TILE_SIZE), int(player.x // TILE_SIZE))
-
-                # Compute A* path for each drone towards the **player's tile**
-                path_drone = astar(grid, drone_cell, player_cell)
-                pixel_path_drone = get_pixel_path(path_drone, TILE_SIZE)
-
-                if len(pixel_path_drone) > 0:
-                    # Find the best reachable waypoint within dt
-                    drone_steps[i], target_drone_pixel = find_best_forward_waypoint(
-                        (drone.x, drone.y), pixel_path_drone, drone_steps[i], DRONE_SPEED * dt
-                    )
-
-                    # Instead of stopping at the grid center, move towards **player's exact position**
-                    final_target_x, final_target_y = player.x, player.y
-                    if drone_steps[i] >= len(pixel_path_drone) - 1:
-                        target_drone_pixel = (final_target_x, final_target_y)  # Adjust to exact position
-
-                    # Compute acceleration (a_x, a_y) for the drone
-                    d_vx = (target_drone_pixel[0] - drone.x) / dt
-                    d_vy = (target_drone_pixel[1] - drone.y) / dt
-                    ax = (d_vx - drone.vx) / dt  # Compute acceleration (a = dv/dt)
-                    ay = (d_vy - drone.vy) / dt
-                    norm_d = math.hypot(ax, ay) #* DRONE_SPEED
-                    ax = ax / norm_d if norm_d > 0 else 0
-                    ay = ay / norm_d if norm_d > 0 else 0
-
-                    drone_input.append([ax, ay])
-                else:
-                    drone_input.append([0, 0])  # No movement if no valid path
-                drone_inputs.append(drone_sensors[i])
-                drone_outputs.append(drone_input[i])
-            drone_input = np.array(drone_input, dtype=np.float32)
-            # Run one step of the simulation
-            cur_distance, player_reached_exit, player_caught = simulate_game_step_manual(
-                player_input, drone_input, player, drones, dungeon, exit_rect, goal, dt)
-
-            player_outputs.append(player_input)
-            player_inputs.append(player_sensors)
-            t += dt
-    player_inputs = np.array(player_inputs, dtype=np.float16)
-    player_outputs = np.array(player_outputs, dtype=np.float16)
-    drone_inputs = np.array(drone_inputs, dtype=np.float16)
-    drone_outputs = np.array(drone_outputs, dtype=np.float16)
-    return (player_inputs, player_outputs), (drone_inputs, drone_outputs)
-
 
 # --- Pretrain the Models ---
 def train_pretrained_models(num_episodes=50, epochs=10, batch_size=1024, dt=0.033, max_time=60.0):
@@ -385,8 +296,8 @@ def plot_paths_dungeon(dungeon, player, drones, exit_rect):
 
 def main():
     parser = argparse.ArgumentParser(description="Run game or training modes")
-    parser.add_argument('--episodes', type=int, default=100000)
-    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--episodes', type=int, default=300)
+    parser.add_argument('--epochs', type=int, default=200)
     parser.add_argument('--save_path', type=str, default="../models_cma/")
     args = parser.parse_args()
 

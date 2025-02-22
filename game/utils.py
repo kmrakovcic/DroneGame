@@ -1,7 +1,8 @@
 import math
 import numpy as np
 import numba
-from config import TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT, PLAYER_RADIUS, DRONE_RADIUS
+from config import (TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT, PLAYER_RADIUS, DRONE_RADIUS,
+                    PLAYER_SPEED, DRONE_SPEED)
 
 @numba.njit
 def circle_rect_collision_numba(cx, cy, radius, left, top, right, bottom):
@@ -153,3 +154,64 @@ def get_sensor_at_angle(x, y, angle, dungeon, player_pos, drones_pos, max_distan
         return dist_w, type_w
     else:
         return dist_e, type_e
+
+def move_entity_logic(accel_x, accel_y, vx, vy, x, y, dt, dungeon, entity_speed=PLAYER_SPEED, entity_radius=PLAYER_RADIUS, drones=[]):
+    if accel_x or accel_y:
+        ACCEL_FACTOR = entity_speed  # adjust as needed
+        vx += accel_x * dt * ACCEL_FACTOR - 0.01 * vx
+        vy += accel_y * dt * ACCEL_FACTOR - 0.01 * vy
+    else:
+        static_drag = entity_speed * 0.1
+        if vx != 0:
+            if abs(vx) > static_drag:
+                vx -= math.copysign(static_drag, vx)
+            else:
+                vx = 0
+        if vy != 0:
+            if abs(vy) > static_drag:
+                vy -= math.copysign(static_drag, vy)
+            else:
+                vy = 0
+    # Optional: clamp velocity to a maximum speed (entity_speed)
+    max_velocity = entity_speed
+    current_speed = math.hypot(vx, vy)
+    if current_speed > max_velocity:
+        vx = (vx / current_speed) * max_velocity
+        vy = (vy / current_speed) * max_velocity
+    # --- Horizontal Movement ---
+    new_x = x + vx * dt
+    if collides_with_walls_numba(new_x, y, entity_radius, dungeon):
+        vx = -vx  # bounce horizontally
+        new_x = x + vx * dt
+        if collides_with_walls_numba(new_x, y, entity_radius, dungeon):
+            new_x = x
+            vx = 0
+
+    # --- Vertical Movement ---
+    new_y = y + vy * dt
+    if collides_with_walls_numba(x, new_y, entity_radius, dungeon):
+        vy = -vy  # bounce vertically
+        new_y = y + vy * dt
+        if collides_with_walls_numba(x, new_y, entity_radius, dungeon):
+            new_y = y
+            vy = 0
+
+    # Optionally check for collisions with other drones
+    if any(distance((new_x, new_y), (d.x, d.y)) < DRONE_RADIUS * 2 for d in drones):
+        vx = -vx
+        vy = -vy
+        new_x = x + vx * dt
+        new_y = y + vy * dt
+        if (collides_with_walls_numba(new_x, y, entity_radius, dungeon) or
+                collides_with_walls_numba(x, new_y, entity_radius, dungeon) or
+                collides_with_walls_numba(new_x, new_y, entity_radius, dungeon)
+        ):
+            new_x, new_y = x, y
+            vx = vy = 0
+
+    # Update position if the new location is valid
+    mask = np.kron(np.array(dungeon, dtype=np.int32), np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32))
+    if mask[int(new_y), int(new_x)] == 1:
+        #self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
+        x, y = new_x, new_y
+    return x, y, vx, vy

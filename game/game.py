@@ -58,6 +58,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
         for drone in drones:
             if distance((player.x, player.y), (drone.x, drone.y)) < (PLAYER_RADIUS + DRONE_RADIUS):
                 player.x, player.y = player_start
+                player.vx, player.vy = 0, 0
                 break
         screen.fill((0, 0, 0))
         for ty in range(MAP_HEIGHT):

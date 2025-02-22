@@ -3,7 +3,7 @@ import math
 import random
 import numpy as np
 from config import DRONE_SPEED, DRONE_RADIUS, SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_DRONE, TILE_SIZE
-from utils import collides_with_walls_numba, distance, get_sensor_at_angle
+from utils import collides_with_walls_numba, distance, get_sensor_at_angle, move_entity_logic
 
 
 class Drone:
@@ -24,7 +24,7 @@ class Drone:
             return self.sensors # return cached sensors
         else:
             others = np.array([[d.x, d.y] for d in drones if d is not self], dtype=np.float32)
-            self.sensors = get_drone_sensor_vector(self.x, self.y, self.sensor_angles, dungeon, (player.x, player.y), others)
+            self.sensors = get_drone_sensor_vector(self.x, self.y, self.vx, self.vy, self.sensor_angles, dungeon, (player.x, player.y), others)
             return self.sensors
 
     def update_random(self, dt, dungeon, drones):
@@ -54,58 +54,19 @@ class Drone:
             output = model(sensor_vec.reshape(1, -1)).numpy()[0]
 
         self.sensors = None
+        old_x, old_y = self.x, self.y
         # Interpret network output as acceleration (x and y components)
         accel_x = output[0]
         accel_y = output[1]
+        norm_a = math.hypot(accel_x, accel_y)
+        accel_x /= norm_a if norm_a else 1
+        accel_y /= norm_a if norm_a else 1
 
-        # Optionally, apply a scaling factor to control acceleration magnitude
-        ACCEL_FACTOR = DRONE_SPEED  # adjust as needed
-        self.vx += accel_x * dt * ACCEL_FACTOR
-        self.vy += accel_y * dt * ACCEL_FACTOR
+        self.x, self.y, self.vx, self.vy = move_entity_logic(accel_x, accel_y, self.vx, self.vy, self.x, self.y, dt,
+                                                             dungeon, entity_speed=DRONE_SPEED, entity_radius=DRONE_RADIUS,
+                                                             drones=[d for d in drones if d is not self])
+        self.distance_covered += distance((old_x, old_y), (self.x, self.y))
 
-        # Optional: clamp velocity to a maximum speed (DRONE_SPEED)
-        max_velocity = DRONE_SPEED
-        current_speed = math.hypot(self.vx, self.vy)
-        if current_speed > max_velocity:
-            self.vx = (self.vx / current_speed) * max_velocity
-            self.vy = (self.vy / current_speed) * max_velocity
-
-        # --- Horizontal Movement ---
-        new_x = self.x + self.vx * dt
-        if collides_with_walls_numba(new_x, self.y, DRONE_RADIUS, dungeon):
-            self.vx = -self.vx  # bounce horizontally
-            new_x = self.x + self.vx * dt
-            if collides_with_walls_numba(new_x, self.y, DRONE_RADIUS, dungeon):
-                new_x = self.x
-                self.vx = 0
-
-        # --- Vertical Movement ---
-        new_y = self.y + self.vy * dt
-        if collides_with_walls_numba(self.x, new_y, DRONE_RADIUS, dungeon):
-            self.vy = -self.vy  # bounce vertically
-            new_y = self.y + self.vy * dt
-            if collides_with_walls_numba(self.x, new_y, DRONE_RADIUS, dungeon):
-                new_y = self.y
-                self.vy = 0
-
-        # Optionally check for collisions with other drones
-        if any(distance((new_x, new_y), (d.x, d.y)) < DRONE_RADIUS * 2 for d in drones if d is not self):
-            self.vx = -self.vx
-            self.vy = -self.vy
-            new_x = self.x + self.vx * dt
-            new_y = self.y + self.vy * dt
-            if collides_with_walls_numba(new_x, self.y, DRONE_RADIUS, dungeon) or collides_with_walls_numba(self.x,
-                                                                                                            new_y,
-                                                                                                            DRONE_RADIUS,
-                                                                                                            dungeon):
-                new_x, new_y = self.x, self.y
-                self.vx = self.vy = 0
-
-        # Update position if the new location is valid
-        mask = np.kron(np.array(dungeon, dtype=np.int32), np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32))
-        if mask[int(new_y), int(new_x)] == 1:
-            self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
-            self.x, self.y = new_x, new_y
 
     def update_manual_acceleration(self, ax, ay, dt, dungeon, player, drones):
         output = np.array([ax, ay], dtype=np.float32)
@@ -123,14 +84,14 @@ def batch_update_drones(drones, dt, dungeon, player, models):
         drone.update_nn(dt, dungeon, player, drones, models, outputs[i])
     return outputs
 
-def get_drone_sensor_vector(x, y, angles, dungeon, player_pos, drones_pos):
+def get_drone_sensor_vector(x, y, vx, vy, angles, dungeon, player_pos, drones_pos):
     max_len = math.hypot(SCREEN_WIDTH, SCREEN_HEIGHT)
-    sensor_vector = np.empty(len(angles) * 2 + 4, dtype=np.float32)
+    sensor_vector = np.empty(len(angles) * 2 + 6, dtype=np.float32)
     for i, angle in enumerate(angles):
         distance, type = get_sensor_at_angle(x, y, angle, dungeon, player_pos, drones_pos)
         distance_norm = distance / max_len
         sensor_vector[i] = distance_norm
         sensor_vector[i + len(angles)] = type
-    sensor_vector[-4:] = np.array([x / SCREEN_WIDTH, y / SCREEN_HEIGHT,
+    sensor_vector[-6:] = np.array([x / SCREEN_WIDTH, y / SCREEN_HEIGHT, vx / DRONE_SPEED, vy / DRONE_SPEED,
                                       player_pos[0] / SCREEN_WIDTH, player_pos[1] / SCREEN_HEIGHT], dtype=np.float32)
     return sensor_vector
