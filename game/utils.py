@@ -1,6 +1,8 @@
 import math
 import numpy as np
 import numba
+from tensorflow import dynamic_stitch
+
 from config import (TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT, PLAYER_RADIUS, DRONE_RADIUS,
                     PLAYER_SPEED, DRONE_SPEED)
 
@@ -156,22 +158,29 @@ def get_sensor_at_angle(x, y, angle, dungeon, player_pos, drones_pos, max_distan
         return dist_e, type_e
 
 def move_entity_logic(accel_x, accel_y, vx, vy, x, y, dt, dungeon, entity_speed=PLAYER_SPEED, entity_radius=PLAYER_RADIUS, drones=[]):
+    # Drag calculation
+    static_drag = entity_speed * 0.1
+    static_drag_x = 0
+    static_drag_y = 0
+    if vx != 0:
+        if abs(vx) > static_drag:
+            static_drag_x = math.copysign(static_drag, vx)
+        else:
+            static_drag_x = 0
+    if vy != 0:
+        if abs(vy) > static_drag:
+            static_drag_y = math.copysign(static_drag, vy)
+        else:
+            static_drag_y = 0
+    dynamic_drag_x = 0.01 * vx
+    dynamic_drag_y = 0.01 * vy
+    vx -= static_drag_x + dynamic_drag_x
+    vy -= static_drag_y + dynamic_drag_y
+    # Velocity update
     if accel_x or accel_y:
-        ACCEL_FACTOR = entity_speed  # adjust as needed
+        ACCEL_FACTOR = 10 * entity_speed # adjust as needed
         vx += accel_x * dt * ACCEL_FACTOR - 0.01 * vx
         vy += accel_y * dt * ACCEL_FACTOR - 0.01 * vy
-    else:
-        static_drag = entity_speed * 0.1
-        if vx != 0:
-            if abs(vx) > static_drag:
-                vx -= math.copysign(static_drag, vx)
-            else:
-                vx = 0
-        if vy != 0:
-            if abs(vy) > static_drag:
-                vy -= math.copysign(static_drag, vy)
-            else:
-                vy = 0
     # Optional: clamp velocity to a maximum speed (entity_speed)
     max_velocity = entity_speed
     current_speed = math.hypot(vx, vy)
@@ -212,6 +221,5 @@ def move_entity_logic(accel_x, accel_y, vx, vy, x, y, dt, dungeon, entity_speed=
     # Update position if the new location is valid
     mask = np.kron(np.array(dungeon, dtype=np.int32), np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32))
     if mask[int(new_y), int(new_x)] == 1:
-        #self.distance_covered += math.hypot(new_x - self.x, new_y - self.y)
         x, y = new_x, new_y
     return x, y, vx, vy

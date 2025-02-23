@@ -2,7 +2,7 @@ import pygame
 import math
 import random
 import numpy as np
-from config import DRONE_SPEED, DRONE_RADIUS, SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_DRONE, TILE_SIZE
+from config import DRONE_SPEED, DRONE_RADIUS, SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_DRONE, TILE_SIZE, PLAYER_RADIUS
 from utils import collides_with_walls_numba, distance, get_sensor_at_angle, move_entity_logic
 
 
@@ -12,6 +12,7 @@ class Drone:
         self.y = y
         self.vx = 0
         self.vy = 0
+        self.spawn = None
         directions = [(dx, dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if dx or dy]
         self.current_dx, self.current_dy = random.choice(directions)
         self.direction_timer = random.uniform(5, 10)
@@ -55,6 +56,7 @@ class Drone:
 
         self.sensors = None
         old_x, old_y = self.x, self.y
+        old_vx, old_vy = self.vx, self.vy
         # Interpret network output as acceleration (x and y components)
         accel_x = output[0]
         accel_y = output[1]
@@ -65,6 +67,14 @@ class Drone:
         self.x, self.y, self.vx, self.vy = move_entity_logic(accel_x, accel_y, self.vx, self.vy, self.x, self.y, dt,
                                                              dungeon, entity_speed=DRONE_SPEED, entity_radius=DRONE_RADIUS,
                                                              drones=[d for d in drones if d is not self])
+        # protect player from spawn camping
+        if ((abs(self.x - player.spawn[0]) < 2.5*PLAYER_RADIUS and abs(self.y - player.spawn[1]) < 2.5*PLAYER_RADIUS) and
+                (player.x == player.spawn[0] and player.y == player.spawn[1])):
+            self.vx = -self.vx
+            self.vy = -self.vy
+            self.x = old_x + self.vx * dt
+            self.y = old_y + self.vy * dt
+
         self.distance_covered += distance((old_x, old_y), (self.x, self.y))
 
 

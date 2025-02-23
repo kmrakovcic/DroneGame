@@ -12,6 +12,7 @@ class Player:
         self.y = y
         self.vx = 0
         self.vy = 0
+        self.spawn = None
         self.distance_covered = 0
         self.sensor_angles = sensors_angles
         self.sensors = None
