@@ -15,7 +15,7 @@ DRONE_NUMBER = 3
 
 # Movement speeds
 PLAYER_SPEED = 100.0
-DRONE_SPEED = 100.0
+DRONE_SPEED = 90.0
 
 # Radii for collision detection
 PLAYER_RADIUS = 10
