@@ -328,6 +328,6 @@ def main():
 
 # --- Example Usage ---
 if __name__ == "__main__":
-    # main()
-    __, __, (player_pos, drone_pos, dungeons) = generate_training_data(num_episodes=1, parallel=False)
-    plot_paths_dungeon(dungeons[0], player_pos[0], drone_pos[0])
+    main()
+    #__, __, (player_pos, drone_pos, dungeons) = generate_training_data(num_episodes=1, parallel=False)
+    #plot_paths_dungeon(dungeons[0], player_pos[0], drone_pos[0])
