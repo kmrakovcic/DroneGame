@@ -235,7 +235,7 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
         while True:
             try:
                 with concurrent.futures.ProcessPoolExecutor() as executor:
-                    results = list(executor.map(generate_episode, [dt] * num_episodes, [max_time] * num_episodes, timeout=600))
+                    results = list(executor.map(generate_episode, [dt] * num_episodes, [max_time] * num_episodes, timeout=60*num_episodes))
                     break
 
             except concurrent.futures.TimeoutError:
