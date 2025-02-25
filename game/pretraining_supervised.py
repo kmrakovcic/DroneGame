@@ -305,15 +305,15 @@ def plot_paths_dungeon(dungeon, player_pos, drones_pos):
     ax.plot(player_pos[:, 0], player_pos[:, 1], 'g')
     for d in range(drones_pos.shape[0]):
         ax.plot(drones_pos[d, :, 0], drones_pos[d, :, 1], 'r')
-    #ax.set_xticks([])
-    #ax.set_yticks([])
+    ax.set_xticks([])
+    ax.set_yticks([])
     fig.tight_layout()
     plt.show()
 
 
 def main():
     parser = argparse.ArgumentParser(description="Run game or training modes")
-    parser.add_argument('--episodes', type=int, default=300)
+    parser.add_argument('--episodes', type=int, default=100)
     parser.add_argument('--epochs', type=int, default=200)
     parser.add_argument('--save_path', type=str, default="../models_cma/")
     args = parser.parse_args()
@@ -329,5 +329,5 @@ def main():
 # --- Example Usage ---
 if __name__ == "__main__":
     main()
-    #__, __, (player_pos, drone_pos, dungeons) = generate_training_data(num_episodes=1, parallel=False)
+    #__, __, (player_pos, drone_pos, dungeons) = generate_training_data(num_episodes=2, parallel=False)
     #plot_paths_dungeon(dungeons[0], player_pos[0], drone_pos[0])

@@ -87,7 +87,7 @@ def new_level():
             if MAP_WIDTH - start_room.x2 - 1 < MAP_HEIGHT - start_room.y2 - 1:
                 start_tile = np.array([start_room.x2 - 1, start_room.center[1]])
             else:
-                start_tile = np.array([start_room.center[1], start_room.y2 - 1])
+                start_tile = np.array([start_room.center[0], start_room.y2 - 1])
         player_start = (start_tile[0] * TILE_SIZE + TILE_SIZE / 2, start_tile[1] * TILE_SIZE + TILE_SIZE / 2)
         player = Player(*player_start)
         if len(rooms) > 1:
