@@ -271,7 +271,7 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
 
 
 # --- Pretrain the Models ---
-def train_pretrained_models(num_episodes=50, epochs=10, batch_size=1024, dt=0.033, max_time=60.0):
+def train_pretrained_models(num_episodes=50, epochs=10, batch_size=8000, dt=0.033, max_time=60.0):
     # Generate training examples.
     (player_x, player_y), (drone_x, drone_y), __ = generate_training_data(num_episodes, dt, max_time)
 
