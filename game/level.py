@@ -54,22 +54,59 @@ def new_level():
     dungeon, rooms = generate_dungeon()
     dungeon_np = np.array(dungeon, dtype=np.int32)
     if rooms:
-        player_room = random.choice(rooms)
-        start_tile = player_room.center
+        start_tile = np.array([MAP_WIDTH//2, MAP_HEIGHT//2])
+        start_angle = random.choice(["top-left", "top-right", "bottom-left", "bottom-right"])
+        if start_angle == "top-left":
+            # find the room that is most to the top left corner
+            start_room = min(rooms, key=lambda r: distance([0, 0], [r.center[0], r.center[1]]))
+            # start from the wall closest to the edge of the screen
+            if start_room.x1 < start_room.y1:
+                start_tile = np.array([start_room.x1, start_room.center[1]])
+            else:
+                start_tile = np.array([start_room.center[0], start_room.y1])
+        elif start_angle == "top-right":
+            # find the room that is most to the top right corner
+            start_room = min(rooms, key=lambda r: distance([MAP_WIDTH, 0], [r.center[0], r.center[1]]))
+            # start from the wall closest to the edge of the screen
+            if MAP_WIDTH - start_room.x2-1 < start_room.y1:
+                start_tile = np.array([start_room.x2-1, start_room.center[1]])
+            else:
+                start_tile = np.array([start_room.center[0], start_room.y1])
+        elif start_angle == "bottom-left":
+            # find the room that is most to the bottom left corner
+            start_room = min(rooms, key=lambda r: distance([0, MAP_HEIGHT], [r.center[0], r.center[1]]))
+            # start from the wall closest to the edge of the screen
+            if start_room.x1 < MAP_HEIGHT - start_room.y2 - 1:
+                start_tile = np.array([start_room.x1, start_room.center[1]])
+            else:
+                start_tile = np.array([start_room.center[0], start_room.y2 - 1])
+        elif start_angle == "bottom-right":
+            # find the room that is most to the bottom right corner
+            start_room = min(rooms, key=lambda r: distance([MAP_WIDTH, MAP_HEIGHT], [r.center[0], r.center[1]]))
+            # start from the wall closest to the edge of the screen
+            if MAP_WIDTH - start_room.x2 - 1 < MAP_HEIGHT - start_room.y2 - 1:
+                start_tile = np.array([start_room.x2 - 1, start_room.center[1]])
+            else:
+                start_tile = np.array([start_room.center[1], start_room.y2 - 1])
         player_start = (start_tile[0] * TILE_SIZE + TILE_SIZE / 2, start_tile[1] * TILE_SIZE + TILE_SIZE / 2)
         player = Player(*player_start)
         if len(rooms) > 1:
-            possible_exits = [r for r in rooms if r != player_room]
-            exit_room = random.choice(possible_exits)
+            rooms_distance = [distance(start_room.center, r.center) for r in rooms if r != start_room]
+            exit_room = [r for r in rooms if r != start_room][np.argsort(rooms_distance)[-1]]
         else:
-            exit_room = player_room
-        exit_tile = exit_room.center
+            exit_room = start_room
+
+        if exit_room.x1 < MAP_WIDTH - exit_room.x2:
+            exit_tile = np.array([exit_room.x1, exit_room.center[1]])
+        else:
+            exit_tile = np.array([exit_room.x2-1, exit_room.center[1]])
+
         exit_rect = pygame.Rect(exit_tile[0] * TILE_SIZE, exit_tile[1] * TILE_SIZE, TILE_SIZE, TILE_SIZE)
     else:
         player_start = (SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
         player = Player(*player_start)
         exit_rect = pygame.Rect(SCREEN_WIDTH - TILE_SIZE, SCREEN_HEIGHT - TILE_SIZE, TILE_SIZE, TILE_SIZE)
-        player_room = None
+        start_room = None
 
     drones = []
     num_drones = DRONE_NUMBER
@@ -78,8 +115,8 @@ def new_level():
             tx = random.randint(0, MAP_WIDTH - 1)
             ty = random.randint(0, MAP_HEIGHT - 1)
             if dungeon_np[ty, tx] == 1:
-                if player_room is not None:
-                    if player_room.x1 <= tx < player_room.x2 and player_room.y1 <= ty < player_room.y2:
+                if start_room is not None:
+                    if start_room.x1 <= tx < start_room.x2 and start_room.y1 <= ty < start_room.y2:
                         continue
                 tile_center = (tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2)
                 if distance(tile_center, player_start) > TILE_SIZE and not exit_rect.collidepoint(tile_center):

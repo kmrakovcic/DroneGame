@@ -231,8 +231,20 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
     dungeons = []
 
     if parallel:
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            results = list(executor.map(generate_episode, [dt] * num_episodes, [max_time] * num_episodes))
+        restarts = 0
+        while True:
+            try:
+                with concurrent.futures.ProcessPoolExecutor() as executor:
+                    results = list(executor.map(generate_episode, [dt] * num_episodes, [max_time] * num_episodes, timeout=600))
+                    break
+
+            except concurrent.futures.TimeoutError:
+                if restarts <= 5:
+                    restarts += 1
+                    print(f"Timeout occurred ! Restarting the simulation...")
+                else:
+                    break
+
 
         for p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos in results:
             player_inputs.append(p_in)
@@ -293,8 +305,8 @@ def plot_paths_dungeon(dungeon, player_pos, drones_pos):
     ax.plot(player_pos[:, 0], player_pos[:, 1], 'g')
     for d in range(drones_pos.shape[0]):
         ax.plot(drones_pos[d, :, 0], drones_pos[d, :, 1], 'r')
-    ax.set_xticks([])
-    ax.set_yticks([])
+    #ax.set_xticks([])
+    #ax.set_yticks([])
     fig.tight_layout()
     plt.show()
 
@@ -310,12 +322,12 @@ def main():
         args.save_path += '/'
 
     model_player, model_drone = train_pretrained_models(args.episodes, args.epochs)
-    model_player.save(args.save_path + "player.keras")
-    model_drone.save(args.save_path + "drone.keras")
+    model_player.save(args.save_path + "player_hunter.keras")
+    model_drone.save(args.save_path + "drone_hunter.keras")
 
 
 # --- Example Usage ---
 if __name__ == "__main__":
-    main()
-    # __, __, (player_pos, drone_pos, dungeons) = generate_training_data(num_episodes=1, parallel=False)
-    # plot_paths_dungeon(dungeons[0], player_pos[0], drone_pos[0])
+    # main()
+    __, __, (player_pos, drone_pos, dungeons) = generate_training_data(num_episodes=1, parallel=False)
+    plot_paths_dungeon(dungeons[0], player_pos[0], drone_pos[0])

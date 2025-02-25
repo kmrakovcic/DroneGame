@@ -3,7 +3,7 @@ import numpy as np
 import time
 import random
 import math
-from config import MAP_HEIGHT, MAP_WIDTH, TILE_SIZE, COLOR_FLOOR, COLOR_WALL, COLOR_EXIT, PLAYER_RADIUS, DRONE_RADIUS
+from config import MAP_HEIGHT, MAP_WIDTH, TILE_SIZE, COLOR_FLOOR, COLOR_WALL, COLOR_EXIT, PLAYER_RADIUS, DRONE_RADIUS, COLOR_START
 from level import new_level
 from entities.player import Player
 from entities.drone import batch_update_drones, Drone
@@ -34,9 +34,12 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
             best_drone_model = create_drone_model()
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    # make screen fullscreen
+    #screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
     pygame.display.set_caption("Drone Escape")
     clock = pygame.time.Clock()
     dungeon, player, drones, exit_rect, player_start = new_level()
+    start_rect = pygame.Rect(player_start[0]-TILE_SIZE//2, player_start[1]-TILE_SIZE//2, TILE_SIZE, TILE_SIZE)
     running = True
     while running:
         dt = clock.tick(30) / 1000.0
@@ -69,6 +72,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
                 color = COLOR_FLOOR if dungeon[ty, tx] == 1 else COLOR_WALL
                 pygame.draw.rect(screen, color, (tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE))
         pygame.draw.rect(screen, COLOR_EXIT, exit_rect)
+        pygame.draw.rect(screen, COLOR_START, start_rect)
         player.draw(screen)
         for drone in drones:
             drone.draw(screen)

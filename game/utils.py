@@ -131,6 +131,16 @@ def sensor_check_entities(x, y, angle, entities_x, entities_y, entities_radius, 
     else:
         return np.min(distance_to_entities[seen_mask]), entities_type[np.argmin(distance_to_entities[seen_mask])]
 
+def sensor_check_exit(x, y, angle, exit_x, exit_y):
+    angle *= -1
+    angle_to_exit = np.arctan2(exit_y - y, exit_x - x)
+    distance_to_exit = np.sqrt((exit_x - x) ** 2 + (exit_y - y) ** 2)
+    paralax_angle = np.arctan2(TILE_SIZE, distance_to_exit)
+    if np.abs(angle_to_exit - angle) < paralax_angle:
+        return distance_to_exit
+    else:
+        return None
+
 def get_sensor_at_angle(x, y, angle, dungeon, player_pos, drones_pos, max_distance=SCREEN_WIDTH):
     angle_rad = math.radians(angle)
     dist_w, type_w = sensor_check_walls(x, y, angle_rad, dungeon, max_distance)
@@ -143,19 +153,21 @@ def get_sensor_at_angle(x, y, angle, dungeon, player_pos, drones_pos, max_distan
             ent_x.append(dx)
             ent_y.append(dy)
             ent_rad.append(DRONE_RADIUS)
-            ent_type.append(1)
+            ent_type.append(0.6)
     if player_pos[0] != x and player_pos[1] != y:
         ent_x.append(player_pos[0])
         ent_y.append(player_pos[1])
         ent_rad.append(PLAYER_RADIUS)
-        ent_type.append(0.5)
+        ent_type.append(0.3)
     dist_e, type_e = sensor_check_entities(x, y, angle_rad, np.array(ent_x), np.array(ent_y), np.array(ent_rad), np.array(ent_type))
+    dist_exit, type_exit = sensor_check_exit(x, y, angle_rad, player_pos[0], player_pos[1]), 1
+    if dist_exit is None:
+        dist_exit = max_distance
+        type_exit = 0
     if dist_e is None:
-        return dist_w, type_w
-    elif dist_w < dist_e:
-        return dist_w, type_w
-    else:
-        return dist_e, type_e
+        dist_e = max_distance
+        type_e = 0
+    return min(dist_w, dist_e, dist_exit), [type_w, type_e, type_exit][np.argmin([dist_w, dist_e, dist_exit])]
 
 def move_entity_logic(accel_x, accel_y, vx, vy, x, y, dt, dungeon, entity_speed=PLAYER_SPEED, entity_radius=PLAYER_RADIUS, drones=[]):
     # Drag calculation
