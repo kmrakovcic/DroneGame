@@ -54,14 +54,14 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
         try:
             model_hunter_player = tf.keras.models.load_model(player_model_path_hunter)
         except:
-            from models import create_player_model
-            model_hunter_player = create_player_model()
+            from models import create_player_hunter_model
+            model_hunter_player = create_player_hunter_model()
     if USE_DRONE_NN:
         try:
             model_hunter_drone = tf.keras.models.load_model(drone_model_path_hunter)
         except:
-            from models import create_drone_model
-            model_hunter_drone = create_drone_model()
+            from models import create_drone_hunter_model
+            model_hunter_drone = create_drone_hunter_model()
 
     pygame.init()
     infoObject = pygame.display.Info()

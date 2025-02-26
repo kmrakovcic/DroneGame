@@ -1,4 +1,5 @@
 import math
+import os
 import time
 
 import numpy as np
@@ -8,10 +9,11 @@ import concurrent.futures
 import argparse
 
 from tensorflow.python.keras.utils.version_utils import callbacks
+from collections import deque
 
 from simulation import simulate_game_step_manual
 from level import new_level
-from models import create_player_model, create_drone_model
+from models import create_player_hunter_model, create_drone_hunter_model
 from config import TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT, PLAYER_SPEED, DRONE_SPEED, \
     PLAYER_RADIUS, DRONE_RADIUS
 
@@ -315,13 +317,13 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
                 # getting the results of the completed episodes
 
 
-        player_inputs = player_inputs[:completed]
-        player_outputs = player_outputs[:completed]
-        player_position = player_position[:completed]
-        drone_inputs = drone_inputs[:completed]
-        drone_outputs = drone_outputs[:completed]
-        drone_position = drone_position[:completed]
-        dungeons = dungeons[:completed]
+        player_inputs = player_inputs[:completed-1]
+        player_outputs = player_outputs[:completed-1]
+        player_position = player_position[:completed-1]
+        drone_inputs = drone_inputs[:completed-1]
+        drone_outputs = drone_outputs[:completed-1]
+        drone_position = drone_position[:completed-1]
+        dungeons = dungeons[:completed-1]
         print(f"\n{completed} episodes completed")
 
     else:
@@ -347,13 +349,10 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
     return (player_inputs, player_outputs), (drone_inputs, drone_outputs), (player_position, drone_position, dungeons)
 
 # --- Pretrain the Models ---
-def train_pretrained_models(num_episodes=50, epochs=10, batch_size=8000, dt=0.033, max_time=60.0):
-    # Generate training examples.
-    (player_x, player_y), (drone_x, drone_y), __ = generate_training_data(num_episodes, dt, max_time)
-
+def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, batch_size=8000):
     # Create models (assume these functions are defined in your models module).
-    player_model = create_player_model(player_x.shape[1])
-    drone_model = create_drone_model(drone_x.shape[1])
+    player_model = create_player_hunter_model(player_x.shape[1])
+    drone_model = create_drone_hunter_model(drone_x.shape[1])
 
     player_model.compile(optimizer='adam', loss='mse')
     drone_model.compile(optimizer='adam', loss='mse')
@@ -389,15 +388,20 @@ def plot_paths_dungeon(dungeon, player_pos, drones_pos):
 
 def main():
     parser = argparse.ArgumentParser(description="Run game or training modes")
-    parser.add_argument('--episodes', type=int, default=100)
-    parser.add_argument('--epochs', type=int, default=200)
+    parser.add_argument('--episodes', type=int, default=10)
+    parser.add_argument('--epochs', type=int, default=2)
     parser.add_argument('--save_path', type=str, default="../models_cma/")
+    parser.add_argument('--train_data', type=str, default="../DATA/training.npz")
     args = parser.parse_args()
-
     if args.save_path[-1] != '/':
         args.save_path += '/'
-
-    model_player, model_drone = train_pretrained_models(args.episodes, args.epochs)
+    if os.path.exists(args.train_data):
+        player_x, player_y, drone_x, drone_y= np.load(args.train_data, allow_pickle=True).values()
+    else:
+        (player_x, player_y), (drone_x, drone_y), _ = generate_training_data(args.episodes, parallel=False)
+        os.makedirs(os.path.dirname(args.train_data), exist_ok=True)
+        np.savez(args.train_data, player_x=player_x, player_y=player_y, drone_x=drone_x, drone_y=drone_y)
+    model_player, model_drone = train_pretrained_models(player_x, player_y, drone_x, drone_y, args.episodes, args.epochs)
     model_player.save(args.save_path + "player_hunter.keras")
     model_drone.save(args.save_path + "drone_hunter.keras")
 

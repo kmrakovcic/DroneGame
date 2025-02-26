@@ -2,7 +2,7 @@ import random
 import numpy as np
 import time
 import concurrent.futures
-from models import create_player_model, create_drone_model
+from models import create_player_hunter_model, create_drone_hunter_model
 from training_helpers import evaluate_candidate
 from level import new_level
 import os
@@ -67,14 +67,14 @@ def run_training(save_path, epochs, use_parallel_evaluation=True):
         drone_population = []
     else:
         #load all models from the save_path that start with "best_player" and "best_drone"
-        drone_population = [create_drone_model().load(save_path + file) for file in os.listdir(save_path) if
+        drone_population = [create_drone_hunter_model().load(save_path + file) for file in os.listdir(save_path) if
                             file.startswith("best_drone")]
-        player_population = [create_player_model().load(save_path + file) for file in os.listdir(save_path) if
+        player_population = [create_player_hunter_model().load(save_path + file) for file in os.listdir(save_path) if
                              file.startswith("best_player")]
     if len(player_population) == 0:
-        player_population = [create_player_model() for _ in range(n)]
+        player_population = [create_player_hunter_model() for _ in range(n)]
     if len(drone_population) == 0:
-        drone_population = [create_drone_model() for _ in range(n)]
+        drone_population = [create_drone_hunter_model() for _ in range(n)]
 
     for epoch in range(num_epochs):
         start_epoch = time.time()
@@ -128,8 +128,8 @@ def run_training(save_path, epochs, use_parallel_evaluation=True):
             best_drone_models[0].save(save_path + "drone.keras")
             best_player_models[0].save(save_path + "player.keras")
         # Generate new population with dynamic mutation rates
-        player_population = generate_new_population(best_player_models, n, create_player_model, mutation_rate,
+        player_population = generate_new_population(best_player_models, n, create_player_hunter_model, mutation_rate,
                                                     mutation_strength)
-        drone_population = generate_new_population(best_drone_models, n, create_drone_model, mutation_rate,
+        drone_population = generate_new_population(best_drone_models, n, create_drone_hunter_model, mutation_rate,
                                                    mutation_strength)
     print("Genetic training complete.")

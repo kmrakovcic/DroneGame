@@ -2,7 +2,7 @@ import numpy as np
 import time
 import concurrent.futures
 import os
-from models import create_player_model, create_drone_model
+from models import create_player_hunter_model, create_drone_hunter_model
 from training_helpers import evaluate_candidate
 from training_helpers import unflatten_weights, flatten_weights
 from simulation import simulate_game
@@ -12,8 +12,8 @@ def fitness_player_drone(flat_player_weights, flat_drone_weights, dt, max_time):
     """Evaluate the player fitness when using these candidate weights.
        (Assume higher is better; we will return negative value for minimization.)"""
     # Create player and drone models.
-    p_model = create_player_model()
-    d_model = create_drone_model()
+    p_model = create_player_hunter_model()
+    d_model = create_drone_hunter_model()
     p_template = p_model.get_weights()
     d_template = d_model.get_weights()
 
@@ -111,19 +111,19 @@ def run_training(save_path, epochs, use_parallel_evaluation=True):
         save_path += '/'
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-        initial_player = flatten_weights(create_player_model().get_weights())
-        initial_drone = flatten_weights(create_drone_model().get_weights())
+        initial_player = flatten_weights(create_player_hunter_model().get_weights())
+        initial_drone = flatten_weights(create_drone_hunter_model().get_weights())
     else:
         if "drone.keras" in os.listdir(save_path):
             import tensorflow as tf
             initial_drone = flatten_weights(tf.keras.models.load_model(save_path + "drone.keras").get_weights())
         else:
-            initial_drone = flatten_weights(create_drone_model().get_weights())
+            initial_drone = flatten_weights(create_drone_hunter_model().get_weights())
         if "player.keras" in os.listdir(save_path):
             import tensorflow as tf
             initial_player = flatten_weights(tf.keras.models.load_model(save_path + "player.keras").get_weights())
         else:
-            initial_player = flatten_weights(create_player_model().get_weights())
+            initial_player = flatten_weights(create_player_hunter_model().get_weights())
 
     # Set initial sigma values for NES
     player_sigma = 0.5
@@ -185,8 +185,8 @@ def run_training(save_path, epochs, use_parallel_evaluation=True):
         # Save best models from this generation.
         best_player_candidate, _ = player_nes.result()
         best_drone_candidate, _ = drone_nes.result()
-        best_player_model = create_player_model()
-        best_drone_model = create_drone_model()
+        best_player_model = create_player_hunter_model()
+        best_drone_model = create_drone_hunter_model()
         best_player_model.set_weights(unflatten_weights(best_player_candidate, best_player_model.get_weights()))
         best_drone_model.set_weights(unflatten_weights(best_drone_candidate, best_drone_model.get_weights()))
         best_player_model.save(save_path + "player.keras")

@@ -1,14 +1,14 @@
 import numpy as np
 from utils import distance
 from simulation import simulate_game, calculate_fitness
-from models import create_player_model, create_drone_model
+from models import create_player_hunter_model, create_drone_hunter_model
 
 # --- Parallel Evaluation Helper ---
 def evaluate_candidate(args):
     index, player_weights, drone_weights, dt_sim, max_time, level = args
-    p_model = create_player_model()
+    p_model = create_player_hunter_model()
     p_model.set_weights(player_weights)
-    d_model = create_drone_model()
+    d_model = create_drone_hunter_model()
     d_model.set_weights(drone_weights)
     return simulate_game(p_model, d_model, dt_sim, max_time)
 
