@@ -349,7 +349,7 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
     return (player_inputs, player_outputs), (drone_inputs, drone_outputs), (player_position, drone_position, dungeons)
 
 # --- Pretrain the Models ---
-def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, batch_size=8000):
+def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, batch_size=1024):
     # Create models (assume these functions are defined in your models module).
     player_model = create_player_hunter_model(player_x.shape[1])
     drone_model = create_drone_hunter_model(drone_x.shape[1])
