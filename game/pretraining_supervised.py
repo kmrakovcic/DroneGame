@@ -287,7 +287,8 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
     timeout_per_episode = 0.05  # Timeout per episode in seconds
 
     if parallel:
-        with concurrent.futures.ProcessPoolExecutor() as executor:
+        cpu_count = min(os.cpu_count(), 100)
+        with concurrent.futures.ProcessPoolExecutor(cpu_count) as executor:
             futures = {executor.submit(generate_episode, dt, max_time): i + 1 for i in range(num_episodes)}
             completed = 0
             try:
@@ -358,7 +359,7 @@ def train_pretrained_models(num_episodes=50, epochs=10, batch_size=8000, dt=0.03
 
     player_model.compile(optimizer='adam', loss='mse')
     drone_model.compile(optimizer='adam', loss='mse')
-    reduce_on_plateau = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=20,)
+    reduce_on_plateau = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.9, patience=20,)
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=100, restore_best_weights=True,
                                                       start_from_epoch=epochs//2)
 
