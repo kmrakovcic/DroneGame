@@ -276,13 +276,13 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
     """Runs multiple simulation episodes in parallel to collect training data."""
 
     #p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos = generate_episode(dt, max_time)
-    player_inputs = [0] * num_episodes
-    player_outputs = [0] * num_episodes
-    player_position = [0] * num_episodes
-    drone_inputs = [0] * num_episodes
-    drone_outputs = [0] * num_episodes
-    drone_position = [0] * num_episodes
-    dungeons = [0] * num_episodes
+    player_inputs = np.empty(num_episodes, dtype=object)
+    player_outputs = np.empty(num_episodes, dtype=object)
+    player_position = np.empty(num_episodes, dtype=object)
+    drone_inputs = np.empty(num_episodes, dtype=object)
+    drone_outputs = np.empty(num_episodes, dtype=object)
+    drone_position = np.empty(num_episodes, dtype=object)
+    dungeons = np.empty(num_episodes, dtype=object)
 
     timeout_per_episode = 0.05  # Timeout per episode in seconds
 
