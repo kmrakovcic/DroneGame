@@ -1,4 +1,6 @@
 import math
+import time
+
 import numpy as np
 import random
 import tensorflow as tf
@@ -282,31 +284,36 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
     drone_position = [0] * num_episodes
     dungeons = [0] * num_episodes
 
-    timeout_per_episode = 60  # Timeout per episode in seconds
+    timeout_per_episode = 0.1  # Timeout per episode in seconds
 
     if parallel:
         with concurrent.futures.ProcessPoolExecutor() as executor:
             futures = {executor.submit(generate_episode, dt, max_time): i + 1 for i in range(num_episodes)}
             completed = 0
-            for future in concurrent.futures.as_completed(futures, timeout=num_episodes * timeout_per_episode):
-                episode_id = futures[future]
-                try:
-                    p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos = future.result(timeout=timeout_per_episode)
-                    player_inputs[completed] = p_in
-                    player_outputs[completed] = p_out
-                    player_position[completed] = p_pos
-                    drone_inputs[completed] = d_in
-                    drone_outputs[completed] = d_out
-                    drone_position[completed] = d_pos
-                    dungeons[completed] = dungeon
-                    completed += 1
-                    print(f"\rEpisode: {completed} / {num_episodes} generated", end="")
+            try:
+                for future in concurrent.futures.as_completed(futures, timeout=num_episodes * timeout_per_episode):
+                    episode_id = futures[future]
+                    try:
+                        p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos = future.result(timeout=timeout_per_episode)
+                        player_inputs[completed] = p_in
+                        player_outputs[completed] = p_out
+                        player_position[completed] = p_pos
+                        drone_inputs[completed] = d_in
+                        drone_outputs[completed] = d_out
+                        drone_position[completed] = d_pos
+                        dungeons[completed] = dungeon
+                        completed += 1
+                        print(f"\rEpisode: {completed} / {num_episodes} generated", end="")
 
-                except concurrent.futures.TimeoutError:
-                    print(f"\nTimeout occurred in episode {episode_id}, skipping...")
+                    except concurrent.futures.TimeoutError:
+                        print(f"\nTimeout occurred in episode {episode_id}, skipping...")
 
-                except Exception as e:
-                    print(f"\nError in episode {episode_id}: {e}")
+                    except Exception as e:
+                        print(f"\nError in episode {episode_id}: {e}")
+            except concurrent.futures.TimeoutError:
+                print (f"\nTimeout occurred after {completed} episodes, stopping...")
+                # getting the results of the completed episodes
+
 
         player_inputs = player_inputs[:completed]
         player_outputs = player_outputs[:completed]
@@ -333,9 +340,11 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
 
             print(f"\rEpisode: {episode} / {num_episodes} generated", end="")
     print()
-    return (np.concatenate(player_inputs), np.concatenate(player_outputs)), \
-           (np.concatenate(drone_inputs), np.concatenate(drone_outputs)), \
-           (player_position, drone_position, dungeons)
+    player_inputs = np.concatenate(player_inputs)
+    player_outputs = np.concatenate(player_outputs)
+    drone_inputs = np.concatenate(drone_inputs)
+    drone_outputs = np.concatenate(drone_outputs)
+    return (player_inputs, player_outputs), (drone_inputs, drone_outputs), (player_position, drone_position, dungeons)
 
 # --- Pretrain the Models ---
 def train_pretrained_models(num_episodes=50, epochs=10, batch_size=8000, dt=0.033, max_time=60.0):
