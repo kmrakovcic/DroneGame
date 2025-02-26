@@ -4,15 +4,15 @@ import os
 # Disable GPU usage (or configure as needed)
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-ZOOM_IN_LVL = 2
+ZOOM_IN_LVL = 3
 # Screen and tile configuration
 TILE_SIZE = 16 * ZOOM_IN_LVL
-MAP_WIDTH = 60  # in tiles
-MAP_HEIGHT = 40 # in tiles
+MAP_WIDTH = 30   # in tiles
+MAP_HEIGHT = 20  # in tiles
 SCREEN_WIDTH = MAP_WIDTH * TILE_SIZE
 SCREEN_HEIGHT = MAP_HEIGHT * TILE_SIZE
 
-DRONE_NUMBER = 6
+DRONE_NUMBER = 3
 
 # Movement speeds
 PLAYER_SPEED = 50.0 * ZOOM_IN_LVL

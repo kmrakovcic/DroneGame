@@ -220,7 +220,7 @@ def generate_episode(dt, max_time):
                                                            dtype=np.float16), dungeon_mask, drones_positions, player_positions
 
 
-def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=True):
+def generate_training_data1(num_episodes=50, dt=0.033, max_time=60.0, parallel=False):
     """Runs multiple simulation episodes in parallel to collect training data."""
     player_inputs = []
     player_outputs = []
@@ -269,6 +269,76 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
         return (np.concatenate(player_inputs), np.concatenate(player_outputs)), (
             np.concatenate(drone_inputs), np.concatenate(drone_outputs)), (player_position, drone_position, dungeons)
 
+
+def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=True):
+    """Runs multiple simulation episodes in parallel to collect training data."""
+    player_inputs = []
+    player_outputs = []
+    player_position = []
+    drone_inputs = []
+    drone_outputs = []
+    drone_position = []
+    dungeons = []
+
+    timeout_per_episode = 60  # Timeout per episode in seconds
+    restarts = 0
+    max_retries = 5
+
+    if parallel:
+        while True:
+            try:
+                with concurrent.futures.ProcessPoolExecutor() as executor:
+                    futures = {executor.submit(generate_episode, dt, max_time): i + 1 for i in range(num_episodes)}
+                    completed = 0
+
+                    for future in concurrent.futures.as_completed(futures, timeout=num_episodes * timeout_per_episode):
+                        episode_id = futures[future]
+                        try:
+                            p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos = future.result(timeout=timeout_per_episode)
+                            player_inputs.append(p_in)
+                            player_outputs.append(p_out)
+                            player_position.append(p_pos)
+                            drone_inputs.append(d_in)
+                            drone_outputs.append(d_out)
+                            drone_position.append(d_pos)
+                            dungeons.append(dungeon)
+                        except concurrent.futures.TimeoutError:
+                            print(f"\nTimeout occurred in episode {episode_id}, skipping...")
+                        except Exception as e:
+                            print(f"\nError in episode {episode_id}: {e}")
+
+                        completed += 1
+                        print(f"\rEpisode: {completed} / {num_episodes} generated", end="")
+
+                break  # If all episodes complete without timeout, exit loop
+
+            except concurrent.futures.TimeoutError:
+                if restarts < max_retries:
+                    restarts += 1
+                    print(f"\nTimeout occurred! Restarting simulation... Attempt {restarts}/{max_retries}")
+                else:
+                    print("\nMaximum retries reached. Exiting...")
+                    break
+
+    else:
+        for episode in range(1, num_episodes + 1):
+            try:
+                p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos = generate_episode(dt, max_time)
+                player_inputs.append(p_in)
+                player_outputs.append(p_out)
+                drone_inputs.append(d_in)
+                drone_outputs.append(d_out)
+                player_position.append(p_pos)
+                drone_position.append(d_pos)
+                dungeons.append(dungeon)
+            except Exception as e:
+                print(f"\nError in episode {episode}: {e}")
+
+            print(f"\rEpisode: {episode} / {num_episodes} generated", end="")
+    print()
+    return (np.concatenate(player_inputs), np.concatenate(player_outputs)), \
+           (np.concatenate(drone_inputs), np.concatenate(drone_outputs)), \
+           (player_position, drone_position, dungeons)
 
 # --- Pretrain the Models ---
 def train_pretrained_models(num_episodes=50, epochs=10, batch_size=8000, dt=0.033, max_time=60.0):

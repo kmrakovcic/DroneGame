@@ -20,14 +20,14 @@ class Room:
                 self.y1 <= other.y2 and self.y2 >= other.y1)
 
 def generate_dungeon():
-    dungeon = [[0 for _ in range(MAP_WIDTH)] for _ in range(MAP_HEIGHT)]
+    dungeon = [[0 for _ in range(MAP_WIDTH+2)] for _ in range(MAP_HEIGHT+2)]
     rooms = []
     from config import ROOM_MIN_SIZE, ROOM_MAX_SIZE, MAX_ROOMS  # import here if needed
     for _ in range(MAX_ROOMS):
         w = random.randint(ROOM_MIN_SIZE, ROOM_MAX_SIZE)
         h = random.randint(ROOM_MIN_SIZE, ROOM_MAX_SIZE)
-        x = random.randint(0, MAP_WIDTH - w - 1)
-        y = random.randint(0, MAP_HEIGHT - h - 1)
+        x = random.randint(1, MAP_WIDTH - w - 2)
+        y = random.randint(1, MAP_HEIGHT - h - 2)
         new_room = Room(x, y, w, h)
         if any(new_room.intersects(r) for r in rooms):
             continue
@@ -61,33 +61,33 @@ def new_level():
             start_room = min(rooms, key=lambda r: distance([0, 0], [r.center[0], r.center[1]]))
             # start from the wall closest to the edge of the screen
             if start_room.x1 < start_room.y1:
-                start_tile = np.array([start_room.x1, start_room.center[1]])
+                start_tile = np.array([start_room.x1-1, start_room.center[1]])
             else:
-                start_tile = np.array([start_room.center[0], start_room.y1])
+                start_tile = np.array([start_room.center[0], start_room.y1-1])
         elif start_angle == "top-right":
             # find the room that is most to the top right corner
             start_room = min(rooms, key=lambda r: distance([MAP_WIDTH, 0], [r.center[0], r.center[1]]))
             # start from the wall closest to the edge of the screen
             if MAP_WIDTH - start_room.x2-1 < start_room.y1:
-                start_tile = np.array([start_room.x2-1, start_room.center[1]])
+                start_tile = np.array([start_room.x2, start_room.center[1]])
             else:
-                start_tile = np.array([start_room.center[0], start_room.y1])
+                start_tile = np.array([start_room.center[0], start_room.y1-1])
         elif start_angle == "bottom-left":
             # find the room that is most to the bottom left corner
             start_room = min(rooms, key=lambda r: distance([0, MAP_HEIGHT], [r.center[0], r.center[1]]))
             # start from the wall closest to the edge of the screen
             if start_room.x1 < MAP_HEIGHT - start_room.y2 - 1:
-                start_tile = np.array([start_room.x1, start_room.center[1]])
+                start_tile = np.array([start_room.x1-1, start_room.center[1]])
             else:
-                start_tile = np.array([start_room.center[0], start_room.y2 - 1])
+                start_tile = np.array([start_room.center[0], start_room.y2])
         elif start_angle == "bottom-right":
             # find the room that is most to the bottom right corner
             start_room = min(rooms, key=lambda r: distance([MAP_WIDTH, MAP_HEIGHT], [r.center[0], r.center[1]]))
             # start from the wall closest to the edge of the screen
             if MAP_WIDTH - start_room.x2 - 1 < MAP_HEIGHT - start_room.y2 - 1:
-                start_tile = np.array([start_room.x2 - 1, start_room.center[1]])
+                start_tile = np.array([start_room.x2, start_room.center[1]])
             else:
-                start_tile = np.array([start_room.center[0], start_room.y2 - 1])
+                start_tile = np.array([start_room.center[0], start_room.y2])
         player_start = (start_tile[0] * TILE_SIZE + TILE_SIZE / 2, start_tile[1] * TILE_SIZE + TILE_SIZE / 2)
         player = Player(*player_start)
         if len(rooms) > 1:
@@ -97,10 +97,14 @@ def new_level():
             exit_room = start_room
 
         if exit_room.x1 < MAP_WIDTH - exit_room.x2:
-            exit_tile = np.array([exit_room.x1, exit_room.center[1]])
+            exit_tile = np.array([exit_room.x1 - 1, exit_room.center[1]])
+            if dungeon [exit_tile[1]][exit_tile[0]] == 0:
+                exit_tile = np.array([exit_room.x2, exit_room.center[1]])
         else:
-            exit_tile = np.array([exit_room.x2-1, exit_room.center[1]])
-
+            exit_tile = np.array([exit_room.x2, exit_room.center[1]])
+        dungeon[exit_tile[1]][exit_tile[0]] = 1
+        dungeon[start_tile[1]][start_tile[0]] = 1
+        dungeon_np = np.array(dungeon, dtype=np.int32)
         exit_rect = pygame.Rect(exit_tile[0] * TILE_SIZE, exit_tile[1] * TILE_SIZE, TILE_SIZE, TILE_SIZE)
     else:
         player_start = (SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
