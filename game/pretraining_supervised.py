@@ -365,7 +365,7 @@ def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, bat
                     validation_split=0.2,
                     callbacks=[reduce_on_plateau, early_stopping])
     print("Pretraining player model...")
-    player_model.fit(player_x, player_y, epochs=epochs, batch_size=batch_size, verbose=2, shuffle=True,
+    player_model.fit(player_x, player_y, epochs=epochs, batch_size=batch_size*3, verbose=2, shuffle=True,
                      validation_split=0.2,
                      callbacks=[reduce_on_plateau, early_stopping])
 
