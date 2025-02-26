@@ -272,65 +272,62 @@ def generate_training_data1(num_episodes=50, dt=0.033, max_time=60.0, parallel=F
 
 def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=True):
     """Runs multiple simulation episodes in parallel to collect training data."""
-    player_inputs = []
-    player_outputs = []
-    player_position = []
-    drone_inputs = []
-    drone_outputs = []
-    drone_position = []
-    dungeons = []
+
+    #p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos = generate_episode(dt, max_time)
+    player_inputs = [0] * num_episodes
+    player_outputs = [0] * num_episodes
+    player_position = [0] * num_episodes
+    drone_inputs = [0] * num_episodes
+    drone_outputs = [0] * num_episodes
+    drone_position = [0] * num_episodes
+    dungeons = [0] * num_episodes
 
     timeout_per_episode = 60  # Timeout per episode in seconds
-    restarts = 0
-    max_retries = 5
 
     if parallel:
-        while True:
-            try:
-                with concurrent.futures.ProcessPoolExecutor() as executor:
-                    futures = {executor.submit(generate_episode, dt, max_time): i + 1 for i in range(num_episodes)}
-                    completed = 0
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            futures = {executor.submit(generate_episode, dt, max_time): i + 1 for i in range(num_episodes)}
+            completed = 0
+            for future in concurrent.futures.as_completed(futures, timeout=num_episodes * timeout_per_episode):
+                episode_id = futures[future]
+                try:
+                    p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos = future.result(timeout=timeout_per_episode)
+                    player_inputs[completed] = p_in
+                    player_outputs[completed] = p_out
+                    player_position[completed] = p_pos
+                    drone_inputs[completed] = d_in
+                    drone_outputs[completed] = d_out
+                    drone_position[completed] = d_pos
+                    dungeons[completed] = dungeon
+                    completed += 1
+                    print(f"\rEpisode: {completed} / {num_episodes} generated", end="")
 
-                    for future in concurrent.futures.as_completed(futures, timeout=num_episodes * timeout_per_episode):
-                        episode_id = futures[future]
-                        try:
-                            p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos = future.result(timeout=timeout_per_episode)
-                            player_inputs.append(p_in)
-                            player_outputs.append(p_out)
-                            player_position.append(p_pos)
-                            drone_inputs.append(d_in)
-                            drone_outputs.append(d_out)
-                            drone_position.append(d_pos)
-                            dungeons.append(dungeon)
-                        except concurrent.futures.TimeoutError:
-                            print(f"\nTimeout occurred in episode {episode_id}, skipping...")
-                        except Exception as e:
-                            print(f"\nError in episode {episode_id}: {e}")
+                except concurrent.futures.TimeoutError:
+                    print(f"\nTimeout occurred in episode {episode_id}, skipping...")
 
-                        completed += 1
-                        print(f"\rEpisode: {completed} / {num_episodes} generated", end="")
+                except Exception as e:
+                    print(f"\nError in episode {episode_id}: {e}")
 
-                break  # If all episodes complete without timeout, exit loop
-
-            except concurrent.futures.TimeoutError:
-                if restarts < max_retries:
-                    restarts += 1
-                    print(f"\nTimeout occurred! Restarting simulation... Attempt {restarts}/{max_retries}")
-                else:
-                    print("\nMaximum retries reached. Exiting...")
-                    break
+        player_inputs = player_inputs[:completed]
+        player_outputs = player_outputs[:completed]
+        player_position = player_position[:completed]
+        drone_inputs = drone_inputs[:completed]
+        drone_outputs = drone_outputs[:completed]
+        drone_position = drone_position[:completed]
+        dungeons = dungeons[:completed]
+        print(f"\n{completed} episodes completed")
 
     else:
         for episode in range(1, num_episodes + 1):
             try:
                 p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos = generate_episode(dt, max_time)
-                player_inputs.append(p_in)
-                player_outputs.append(p_out)
-                drone_inputs.append(d_in)
-                drone_outputs.append(d_out)
-                player_position.append(p_pos)
-                drone_position.append(d_pos)
-                dungeons.append(dungeon)
+                player_inputs[episode-1] = p_in
+                player_outputs[episode-1] = p_out
+                player_position[episode-1] = p_pos
+                drone_inputs[episode-1] = d_in
+                drone_outputs[episode-1] = d_out
+                drone_position[episode-1] = d_pos
+                dungeons[episode-1] = dungeon
             except Exception as e:
                 print(f"\nError in episode {episode}: {e}")
 
@@ -399,5 +396,5 @@ def main():
 # --- Example Usage ---
 if __name__ == "__main__":
     main()
-    #__, __, (player_pos, drone_pos, dungeons) = generate_training_data(num_episodes=2, parallel=False)
+    #__, __, (player_pos, drone_pos, dungeons) = generate_training_data(num_episodes=50, parallel=True)
     #plot_paths_dungeon(dungeons[0], player_pos[0], drone_pos[0])
