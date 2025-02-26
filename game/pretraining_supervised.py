@@ -360,14 +360,14 @@ def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, bat
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=80, restore_best_weights=True,
                                                       start_from_epoch=epochs//3)
 
-    print("Pretraining player model...")
-    player_model.fit(player_x, player_y, epochs=epochs, batch_size=batch_size, verbose=2, shuffle=True,
-                     validation_split=0.2,
-                     callbacks=[reduce_on_plateau, early_stopping])
     print("Pretraining drone model...")
     drone_model.fit(drone_x, drone_y, epochs=epochs, batch_size=batch_size, verbose=2, shuffle=True,
                     validation_split=0.2,
                     callbacks=[reduce_on_plateau, early_stopping])
+    print("Pretraining player model...")
+    player_model.fit(player_x, player_y, epochs=epochs, batch_size=batch_size, verbose=2, shuffle=True,
+                     validation_split=0.2,
+                     callbacks=[reduce_on_plateau, early_stopping])
 
     return player_model, drone_model
 
