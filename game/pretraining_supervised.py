@@ -316,13 +316,13 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
 
 
         if completed != num_episodes:
-            player_inputs = player_inputs[:completed]
-            player_outputs = player_outputs[:completed]
-            player_position = player_position[:completed]
-            drone_inputs = drone_inputs[:completed]
-            drone_outputs = drone_outputs[:completed]
-            drone_position = drone_position[:completed]
-            dungeons = dungeons[:completed]
+            del player_inputs[completed:]
+            del player_outputs[completed:]
+            del player_position[completed:]
+            del drone_inputs[completed:]
+            del drone_outputs[completed:]
+            del drone_position[completed:]
+            del dungeons[completed:]
         print(f"\n{completed} episodes completed")
 
     else:
