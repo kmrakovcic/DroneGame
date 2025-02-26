@@ -358,8 +358,9 @@ def train_pretrained_models(num_episodes=50, epochs=10, batch_size=8000, dt=0.03
 
     player_model.compile(optimizer='adam', loss='mse')
     drone_model.compile(optimizer='adam', loss='mse')
-    reduce_on_plateau = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=20)
-    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=80, restore_best_weights=True)
+    reduce_on_plateau = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=20,)
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=100, restore_best_weights=True,
+                                                      start_from_epoch=epochs//2)
 
     print("Pretraining player model...")
     player_model.fit(player_x, player_y, epochs=epochs, batch_size=batch_size, verbose=2, shuffle=True,
