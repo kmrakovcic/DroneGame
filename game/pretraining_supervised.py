@@ -11,6 +11,7 @@ import argparse
 from tensorflow.python.keras.utils.version_utils import callbacks
 from collections import deque
 
+from game.config import DRONE_NUMBER
 from simulation import simulate_game_step_manual
 from level import new_level
 from models import create_player_hunter_model, create_drone_hunter_model
@@ -361,7 +362,7 @@ def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, bat
                                                       start_from_epoch=epochs//3)
 
     print("Pretraining drone model...")
-    drone_model.fit(drone_x, drone_y, epochs=epochs, batch_size=batch_size*3, verbose=2, shuffle=True,
+    drone_model.fit(drone_x, drone_y, epochs=epochs, batch_size=batch_size*DRONE_NUMBER, verbose=2, shuffle=True,
                     validation_split=0.2,
                     callbacks=[reduce_on_plateau, early_stopping])
     print("Pretraining player model...")
