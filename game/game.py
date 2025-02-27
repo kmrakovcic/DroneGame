@@ -89,19 +89,6 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
 
         if USE_PLAYER_NN:
             player.update_nn(dt, dungeon, drones, model_hunter_player)
-            """
-            if step % 30 == 0:
-                player_sensors = player.get_sensors(dungeon, drones)
-                player_sensors_dict = {f"Angle {player.sensor_angles[i]}": [player_sensors[i], player_sensors[i+len(player.sensor_angles)]] for i in range(len(player.sensor_angles))}
-                player_sensors_dict[f"Position"] = [player_sensors[-6], player_sensors[-5]]
-                player_sensors_dict[f"Velocity"] = [player_sensors[-4], player_sensors[-3]]
-                player_sensors_dict[f"Goal"] = [player_sensors[-2], player_sensors[-1]]
-                sensors_pandas = pd.DataFrame(player_sensors_dict)
-                with pd.option_context('display.max_rows', None, 'display.max_columns',
-                                       None):  # more options can be specified also
-                    print(sensors_pandas)
-                    print ()
-                    print ()"""
         else:
             player.update_keyboard(dt, dungeon)
 
@@ -111,6 +98,36 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
             for drone in drones:
                 drone.update_random(dt, dungeon, drones)
 
+        if step % 1 == 0:
+            """player_sensors = player.get_sensors(dungeon, drones)
+            player_sensors_dict = {
+                f"Angle {player.sensor_angles[i]}": [player_sensors[i], player_sensors[i + len(player.sensor_angles)]]
+                for i in range(len(player.sensor_angles))}
+            player_sensors_dict[f"Position"] = [player_sensors[-6], player_sensors[-5]]
+            player_sensors_dict[f"Velocity"] = [player_sensors[-4], player_sensors[-3]]
+            player_sensors_dict[f"Goal"] = [player_sensors[-2], player_sensors[-1]]
+            sensors_pandas = pd.DataFrame(player_sensors_dict)
+            with pd.option_context('display.max_rows', None, 'display.max_columns',
+                                   None):  # more options can be specified also
+                print ("PLAYER")
+                print(sensors_pandas)
+                print()
+                print()"""
+            for d_num, drone in enumerate(drones):
+                drone_sensors = drone.get_sensors(player, drones, dungeon)
+                drone_sensor_dict = {
+                    f"Angle {drone.sensor_angles[i]}": [drone_sensors[i], drone_sensors[i + len(drone.sensor_angles)]]
+                    for i in range(len(drone.sensor_angles))}
+                #drone_sensor_dict[f"Position"] = [drone_sensors[-6], drone_sensors[-5]]
+                #drone_sensor_dict[f"Velocity"] = [drone_sensors[-4], drone_sensors[-3]]
+                #drone_sensor_dict[f"Goal"] = [drone_sensors[-2], drone_sensors[-1]]
+                drone_sensor_pandas = pd.DataFrame(drone_sensor_dict)
+                with pd.option_context('display.max_rows', None, 'display.max_columns',
+                                        None):
+                    print (f"Drone {d_num}")
+                    print(drone_sensor_pandas)
+                    print ()
+                    print ()
         # Adjust Camera Offset to keep player centered, but fix to the screen edges if player moves to the edge
         if screen_w < MAP_WIDTH * TILE_SIZE:
             camera_x = player.x - screen_w // 2
