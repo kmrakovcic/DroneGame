@@ -66,6 +66,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
     pygame.init()
     infoObject = pygame.display.Info()
     screen_w, screen_h = infoObject.current_w, infoObject.current_h
+    screen_w, screen_h = 600, 600
     screen = pygame.display.set_mode((screen_w, screen_h))
     #screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN)
     pygame.display.set_caption("Drone Escape")
@@ -98,8 +99,9 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
             for drone in drones:
                 drone.update_random(dt, dungeon, drones)
 
+        """
         if step % 1 == 0:
-            """player_sensors = player.get_sensors(dungeon, drones)
+            player_sensors = player.get_sensors(dungeon, drones)
             player_sensors_dict = {
                 f"Angle {player.sensor_angles[i]}": [player_sensors[i], player_sensors[i + len(player.sensor_angles)]]
                 for i in range(len(player.sensor_angles))}
@@ -112,7 +114,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
                 print ("PLAYER")
                 print(sensors_pandas)
                 print()
-                print()"""
+                print()
             for d_num, drone in enumerate(drones):
                 drone_sensors = drone.get_sensors(player, drones, dungeon)
                 drone_sensor_dict = {
@@ -127,7 +129,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
                     print (f"Drone {d_num}")
                     print(drone_sensor_pandas)
                     print ()
-                    print ()
+                    print ()"""
         # Adjust Camera Offset to keep player centered, but fix to the screen edges if player moves to the edge
         if screen_w < MAP_WIDTH * TILE_SIZE:
             camera_x = player.x - screen_w // 2

@@ -129,7 +129,7 @@ def sensor_check_entities(x, y, angle, entities_x, entities_y, entities_radius, 
     if not np.any(seen_mask):
         return None, None
     else:
-        return np.min(distance_to_entities[seen_mask]), entities_type[np.argmin(distance_to_entities[seen_mask])]
+        return np.min(distance_to_entities[seen_mask]), entities_type[seen_mask][np.argmin(distance_to_entities[seen_mask])]
 
 def sensor_check_exit(x, y, angle, exit_x, exit_y):
     angle *= -1
@@ -153,19 +153,17 @@ def get_sensor_at_angle(x, y, angle, dungeon, player_pos, drones_pos, exit_pos, 
             ent_x.append(dx)
             ent_y.append(dy)
             ent_rad.append(DRONE_RADIUS)
-            ent_type.append(0.5)
+            ent_type.append(0.25)
     if player_pos[0] != x and player_pos[1] != y:
         ent_x.append(player_pos[0])
         ent_y.append(player_pos[1])
         ent_rad.append(PLAYER_RADIUS)
-        ent_type.append(1)
+        ent_type.append(0.75)
     dist_e, type_e = sensor_check_entities(x, y, angle_rad, np.array(ent_x), np.array(ent_y), np.array(ent_rad), np.array(ent_type))
-    #dist_exit, type_exit = sensor_check_exit(x, y, angle_rad, exit_pos[0], exit_pos[1]), 2
-    dist_exit = None
-    type_exit = None
+    dist_exit, type_exit = sensor_check_exit(x, y, angle_rad, exit_pos[0], exit_pos[1]), 0.5
     if dist_exit is None:
         dist_exit = max_distance
-        type_exit = 2
+        type_exit = 0
     if dist_e is None:
         dist_e = max_distance
         type_e = 0
