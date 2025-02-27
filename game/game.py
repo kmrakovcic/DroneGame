@@ -45,7 +45,7 @@ def draw_exit_arrow(screen, player_x, player_y, exit_x, exit_y, screen_width, sc
     pygame.draw.polygon(screen, COLOR_EXIT, [tip, left, right])
 
 
-def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/"):
+def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_cma/"):
     if path[-1] != '/':
         path += '/'
     player_model_path_hunter = path + "player_hunter.keras"
@@ -81,7 +81,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
     step = 0
     import pandas as pd
     while running:
-        step+=1
+        step += 1
         dt = clock.tick(30) / 1000.0  # Convert to seconds
 
         for event in pygame.event.get():
@@ -169,8 +169,8 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
 
         # Draw everything relative to camera position
         screen.fill((0, 0, 0))
-        for ty in range(int(camera_y//TILE_SIZE -1), int(camera_y//TILE_SIZE + screen_h//TILE_SIZE + 1), 1):
-            for tx in range(int(camera_x//TILE_SIZE - 1), int(camera_x//TILE_SIZE + screen_w//TILE_SIZE + 1), 1):
+        for ty in range(int(camera_y // TILE_SIZE - 1), int(camera_y // TILE_SIZE + screen_h // TILE_SIZE + 1), 1):
+            for tx in range(int(camera_x // TILE_SIZE - 1), int(camera_x // TILE_SIZE + screen_w // TILE_SIZE + 1), 1):
                 if tx < 0 or tx >= MAP_WIDTH or ty < 0 or ty >= MAP_HEIGHT:
                     color = COLOR_WALL
                 else:
@@ -185,11 +185,13 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
                              (exit_rect.x - camera_x, exit_rect.y - camera_y, TILE_SIZE, TILE_SIZE))
         else:
             draw_exit_arrow(screen, camera_x + screen_w // 2, camera_y + screen_h // 2,
-                            exit_rect.x + TILE_SIZE / 2, exit_rect.y + TILE_SIZE / 2, screen_w-100, screen_h-100)
+                            exit_rect.x + TILE_SIZE / 2, exit_rect.y + TILE_SIZE / 2, screen_w - 100, screen_h - 100)
         # Draw Start
-        if 0 <= player_start[0] - TILE_SIZE // 2 - camera_x < screen_w and 0 <= player_start[1] - TILE_SIZE // 2 - camera_y < screen_h:
+        if 0 <= player_start[0] - TILE_SIZE // 2 - camera_x < screen_w and 0 <= player_start[
+            1] - TILE_SIZE // 2 - camera_y < screen_h:
             pygame.draw.rect(screen, COLOR_START,
-                             (player_start[0] - TILE_SIZE // 2 - camera_x, player_start[1] - TILE_SIZE // 2-camera_y, TILE_SIZE, TILE_SIZE))
+                             (player_start[0] - TILE_SIZE // 2 - camera_x, player_start[1] - TILE_SIZE // 2 - camera_y,
+                              TILE_SIZE, TILE_SIZE))
 
         # Draw Player (always at the center of screen)
         if 0 <= player.x - camera_x < screen_w and 0 <= player.y - camera_y < screen_h:

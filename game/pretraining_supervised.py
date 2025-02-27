@@ -240,7 +240,8 @@ def generate_training_data1(num_episodes=50, dt=0.033, max_time=60.0, parallel=F
         while True:
             try:
                 with concurrent.futures.ProcessPoolExecutor() as executor:
-                    results = list(executor.map(generate_episode, [dt] * num_episodes, [max_time] * num_episodes, timeout=60*num_episodes))
+                    results = list(executor.map(generate_episode, [dt] * num_episodes, [max_time] * num_episodes,
+                                                timeout=60 * num_episodes))
                     break
 
             except concurrent.futures.TimeoutError:
@@ -249,7 +250,6 @@ def generate_training_data1(num_episodes=50, dt=0.033, max_time=60.0, parallel=F
                     print(f"Timeout occurred ! Restarting the simulation...")
                 else:
                     break
-
 
         for p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos in results:
             player_inputs.append(p_in)
@@ -314,28 +314,28 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
                     except Exception as e:
                         print(f"\nError in episode {episode_id}: {e}")
             except concurrent.futures.TimeoutError:
-                print (f"\nTimeout occurred after {completed} episodes, stopping...")
+                print(f"\nTimeout occurred after {completed} episodes, stopping...")
                 executor.shutdown(wait=False, cancel_futures=True)
-        player_inputs = player_inputs[:completed-1]
-        player_outputs = player_outputs[:completed-1]
-        player_position = player_position[:completed-1]
-        drone_inputs = drone_inputs[:completed-1]
-        drone_outputs = drone_outputs[:completed-1]
-        drone_position = drone_position[:completed-1]
-        dungeons = dungeons[:completed-1]
+        player_inputs = player_inputs[:completed - 1]
+        player_outputs = player_outputs[:completed - 1]
+        player_position = player_position[:completed - 1]
+        drone_inputs = drone_inputs[:completed - 1]
+        drone_outputs = drone_outputs[:completed - 1]
+        drone_position = drone_position[:completed - 1]
+        dungeons = dungeons[:completed - 1]
         print(f"\n{completed} episodes completed")
 
     else:
         for episode in range(1, num_episodes + 1):
             try:
                 p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos = generate_episode(dt, max_time)
-                player_inputs[episode-1] = p_in
-                player_outputs[episode-1] = p_out
-                player_position[episode-1] = p_pos
-                drone_inputs[episode-1] = d_in
-                drone_outputs[episode-1] = d_out
-                drone_position[episode-1] = d_pos
-                dungeons[episode-1] = dungeon
+                player_inputs[episode - 1] = p_in
+                player_outputs[episode - 1] = p_out
+                player_position[episode - 1] = p_pos
+                drone_inputs[episode - 1] = d_in
+                drone_outputs[episode - 1] = d_out
+                drone_position[episode - 1] = d_pos
+                dungeons[episode - 1] = dungeon
             except Exception as e:
                 print(f"\nError in episode {episode}: {e}")
 
@@ -347,8 +347,10 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
     drone_outputs = np.concatenate(drone_outputs)
     return (player_inputs, player_outputs), (drone_inputs, drone_outputs), (player_position, drone_position, dungeons)
 
+
 # --- Pretrain the Models ---
-def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, batch_size=1024, drone_path=None, player_path=None):
+def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, batch_size=1024, drone_path=None,
+                            player_path=None):
     # Create models (assume these functions are defined in your models module).
     player_model = create_player_hunter_model(player_x.shape[1])
     drone_model = create_drone_hunter_model(drone_x.shape[1])
@@ -357,14 +359,14 @@ def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, bat
     drone_model.compile(optimizer='adam', loss='mse')
     reduce_on_plateau = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.9, patience=20)
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=80, restore_best_weights=True,
-                                                      start_from_epoch=epochs//3)
+                                                      start_from_epoch=epochs // 3)
     callbacks = [reduce_on_plateau, early_stopping]
     if drone_path is not None:
         checkpoints = tf.keras.callbacks.ModelCheckpoint(drone_path, monitor='val_loss', save_best_only=True)
         callbacks.append(checkpoints)
 
     print("Pretraining drone model...")
-    drone_model.fit(drone_x, drone_y, epochs=epochs, batch_size=batch_size*DRONE_NUMBER, verbose=2, shuffle=True,
+    drone_model.fit(drone_x, drone_y, epochs=epochs, batch_size=batch_size * DRONE_NUMBER, verbose=2, shuffle=True,
                     validation_split=0.2,
                     callbacks=callbacks)
     if drone_path is not None:
@@ -399,26 +401,30 @@ def plot_paths_dungeon(dungeon, player_pos, drones_pos):
 
 def main():
     parser = argparse.ArgumentParser(description="Run game or training modes")
-    parser.add_argument('--episodes', type=int, default=10)
-    parser.add_argument('--epochs', type=int, default=2)
+    parser.add_argument('--episodes', type=int, default=100)
+    parser.add_argument('--epochs', type=int, default=200)
     parser.add_argument('--save_path', type=str, default="../models_cma/")
     parser.add_argument('--train_data', type=str, default="../DATA/training.npz")
     args = parser.parse_args()
     if args.save_path[-1] != '/':
         args.save_path += '/'
     if os.path.exists(args.train_data):
-        player_x, player_y, drone_x, drone_y= np.load(args.train_data, allow_pickle=True).values()
+        player_x, player_y, drone_x, drone_y = np.load(args.train_data, allow_pickle=True).values()
     else:
         (player_x, player_y), (drone_x, drone_y), _ = generate_training_data(args.episodes, parallel=True)
         os.makedirs(os.path.dirname(args.train_data), exist_ok=True)
         np.savez(args.train_data, player_x=player_x, player_y=player_y, drone_x=drone_x, drone_y=drone_y)
     model_player, model_drone = train_pretrained_models(player_x, player_y, drone_x, drone_y, args.epochs,
-                                                        drone_path=args.save_path + "drone_hunter.keras", player_path=args.save_path + "player_hunter.keras")
+                                                        drone_path=args.save_path + "drone_hunter.keras",
+                                                        player_path=args.save_path + "player_hunter.keras")
     return model_drone, model_player
 
 
 # --- Example Usage ---
 if __name__ == "__main__":
+    #player_x, player_y, drone_x, drone_y = np.load("../DATA/training.npz", allow_pickle=True).values()
+    #print ((drone_x[:, 8:16]==0.75).sum())
+
     main()
     #__, __, (player_pos, drone_pos, dungeons) = generate_training_data(num_episodes=50, parallel=True)
     #plot_paths_dungeon(dungeons[0], player_pos[0], drone_pos[0])
