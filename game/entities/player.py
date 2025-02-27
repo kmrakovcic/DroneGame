@@ -13,18 +13,19 @@ class Player:
         self.vx = 0
         self.vy = 0
         self.spawn = None
+        self.level_exit = None
         self.distance_covered = 0
         self.sensor_angles = sensors_angles
         self.sensors = None
 
-    def get_sensors(self, dungeon, drones, goal):
+    def get_sensors(self, dungeon, drones):
         if self.sensors is not None:
             return self.sensors
         else:
             self.sensors = get_player_sensor_vector(
                 self.x, self.y, self.vx, self.vy, self.sensor_angles, dungeon,
                 np.array([[d.x, d.y] for d in drones], dtype=np.float32),
-                goal)
+                self.level_exit)
             return self.sensors
 
     def update_keyboard(self, dt, dungeon):
@@ -43,9 +44,9 @@ class Player:
                                                              entity_speed=PLAYER_SPEED, entity_radius=PLAYER_RADIUS, drones=[])
 
 
-    def update_nn(self, dt, dungeon, drones, goal, model):
+    def update_nn(self, dt, dungeon, drones, model):
         # Get sensor vector and NN output
-        sensor_vec = self.get_sensors(dungeon, drones, goal)
+        sensor_vec = self.get_sensors(dungeon, drones)
         output = model(sensor_vec.reshape(1, -1)).numpy()[0]
         self.sensors = None
         accel_x = output[0]
@@ -73,7 +74,7 @@ def get_player_sensor_vector(x, y, vx, vy, angles, dungeon, drones_pos, goal):
     max_len = math.hypot(SCREEN_WIDTH, SCREEN_HEIGHT)
     sensor_vector = np.empty(len(angles) * 2 + 6, dtype=np.float32)
     for i, angle in enumerate(angles):
-        distance, type = get_sensor_at_angle(x, y, angle, dungeon, (x, y), drones_pos)
+        distance, type = get_sensor_at_angle(x, y, angle, dungeon, (x, y), drones_pos, goal)
         distance_norm = distance / max_len
         sensor_vector[i] = distance_norm
         sensor_vector[i + len(angles)] = type

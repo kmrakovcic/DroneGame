@@ -127,9 +127,11 @@ def new_level():
                     if not any(distance(tile_center, (d.x, d.y)) < TILE_SIZE for d in drones):
                         d = Drone(tile_center[0], tile_center[1])
                         d.spawn = tile_center
+                        d.level_exit = (exit_rect.x + TILE_SIZE // 2, exit_rect.y + TILE_SIZE // 2)
                         drones.append(d)
                         break
     player.spawn = player_start
+    player.level_exit = (exit_rect.x + TILE_SIZE // 2, exit_rect.y + TILE_SIZE // 2)
     return dungeon_np, player, drones, exit_rect, player_start
 
 if __name__ == "__main__":

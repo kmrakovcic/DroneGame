@@ -41,12 +41,13 @@ def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0):
                                                       player_exit_distance)
     return player_fitness, drone_fitness, t"""
 
-def simulate_game_step(player, drones, dungeon, exit_rect, goal, player_model, drone_model, dt_sim):
+def simulate_game_step(player, drones, dungeon, exit_rect, player_model, drone_model, dt_sim):
     """
     Performs a single simulation step (one dt_sim).
     Returns updated game state information and termination flags.
     """
-    player.update_nn(dt_sim, dungeon, drones, goal, player_model)
+    goal = player.level_exit
+    player.update_nn(dt_sim, dungeon, drones, player_model)
     batch_update_drones(drones, dt_sim, dungeon, player, drone_model)
 
     cur_distance = distance((player.x, player.y), goal)
@@ -103,7 +104,7 @@ def simulate_game(player_model, drone_model, dt_sim=0.1, max_time=60.0):
 
     while t < max_time:
         cur_distance, player_reached_exit, player_caught = simulate_game_step(
-            player, drones, dungeon, exit_rect, goal, player_model, drone_model, dt_sim
+            player, drones, dungeon, exit_rect, player_model, drone_model, dt_sim
         )
 
         if cur_distance < min_distance:

@@ -77,17 +77,31 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_ga/")
     camera_x, camera_y = player.x - SCREEN_WIDTH // 2, player.y - SCREEN_HEIGHT // 2
 
     running = True
+    step = 0
+    import pandas as pd
     while running:
+        step+=1
         dt = clock.tick(30) / 1000.0  # Convert to seconds
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                 running = False
 
-        goal = (exit_rect.x + TILE_SIZE / 2, exit_rect.y + TILE_SIZE / 2)
-
         if USE_PLAYER_NN:
-            player.update_nn(dt, dungeon, drones, goal, model_hunter_player)
+            player.update_nn(dt, dungeon, drones, model_hunter_player)
+            """
+            if step % 30 == 0:
+                player_sensors = player.get_sensors(dungeon, drones)
+                player_sensors_dict = {f"Angle {player.sensor_angles[i]}": [player_sensors[i], player_sensors[i+len(player.sensor_angles)]] for i in range(len(player.sensor_angles))}
+                player_sensors_dict[f"Position"] = [player_sensors[-6], player_sensors[-5]]
+                player_sensors_dict[f"Velocity"] = [player_sensors[-4], player_sensors[-3]]
+                player_sensors_dict[f"Goal"] = [player_sensors[-2], player_sensors[-1]]
+                sensors_pandas = pd.DataFrame(player_sensors_dict)
+                with pd.option_context('display.max_rows', None, 'display.max_columns',
+                                       None):  # more options can be specified also
+                    print(sensors_pandas)
+                    print ()
+                    print ()"""
         else:
             player.update_keyboard(dt, dungeon)
 

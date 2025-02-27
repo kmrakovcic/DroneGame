@@ -13,6 +13,7 @@ class Drone:
         self.vx = 0
         self.vy = 0
         self.spawn = None
+        self.level_exit = None
         directions = [(dx, dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if dx or dy]
         self.current_dx, self.current_dy = random.choice(directions)
         self.direction_timer = random.uniform(5, 10)
@@ -25,7 +26,8 @@ class Drone:
             return self.sensors # return cached sensors
         else:
             others = np.array([[d.x, d.y] for d in drones if d is not self], dtype=np.float32)
-            self.sensors = get_drone_sensor_vector(self.x, self.y, self.vx, self.vy, self.sensor_angles, dungeon, (player.x, player.y), others)
+            self.sensors = get_drone_sensor_vector(self.x, self.y, self.vx, self.vy, self.sensor_angles, dungeon,
+                                                   (player.x, player.y), others, self.level_exit)
             return self.sensors
 
     def update_random(self, dt, dungeon, drones):
@@ -94,11 +96,11 @@ def batch_update_drones(drones, dt, dungeon, player, models):
         drone.update_nn(dt, dungeon, player, drones, models, outputs[i])
     return outputs
 
-def get_drone_sensor_vector(x, y, vx, vy, angles, dungeon, player_pos, drones_pos):
+def get_drone_sensor_vector(x, y, vx, vy, angles, dungeon, player_pos, drones_pos, goal):
     max_len = math.hypot(SCREEN_WIDTH, SCREEN_HEIGHT)
     sensor_vector = np.empty(len(angles) * 2 + 6, dtype=np.float32)
     for i, angle in enumerate(angles):
-        distance, type = get_sensor_at_angle(x, y, angle, dungeon, player_pos, drones_pos)
+        distance, type = get_sensor_at_angle(x, y, angle, dungeon, player_pos, drones_pos, goal)
         distance_norm = distance / max_len
         sensor_vector[i] = distance_norm
         sensor_vector[i + len(angles)] = type
