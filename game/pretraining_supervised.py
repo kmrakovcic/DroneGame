@@ -350,7 +350,7 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
     return (player_inputs, player_outputs), (drone_inputs, drone_outputs), (player_position, drone_position, dungeons)
 
 # --- Pretrain the Models ---
-def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, batch_size=1024):
+def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, batch_size=1024, drone_path=None, player_path=None):
     # Create models (assume these functions are defined in your models module).
     player_model = create_player_hunter_model(player_x.shape[1])
     drone_model = create_drone_hunter_model(drone_x.shape[1])
@@ -360,16 +360,27 @@ def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, bat
     reduce_on_plateau = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.9, patience=20)
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=80, restore_best_weights=True,
                                                       start_from_epoch=epochs//3)
+    callbacks = [reduce_on_plateau, early_stopping]
+    if drone_path is not None:
+        checkpoints = tf.keras.callbacks.ModelCheckpoint(drone_path, monitor='val_loss', save_best_only=True)
+        callbacks.append(checkpoints)
 
     print("Pretraining drone model...")
     drone_model.fit(drone_x, drone_y, epochs=epochs, batch_size=batch_size*DRONE_NUMBER, verbose=2, shuffle=True,
                     validation_split=0.2,
-                    callbacks=[reduce_on_plateau, early_stopping])
+                    callbacks=callbacks)
+    if drone_path is not None:
+        drone_model.save(drone_path)
     print("Pretraining player model...")
+    callbacks = [reduce_on_plateau, early_stopping]
+    if player_path is not None:
+        checkpoints = tf.keras.callbacks.ModelCheckpoint(player_path, monitor='val_loss', save_best_only=True)
+        callbacks.append(checkpoints)
     player_model.fit(player_x, player_y, epochs=epochs, batch_size=batch_size, verbose=2, shuffle=True,
                      validation_split=0.2,
-                     callbacks=[reduce_on_plateau, early_stopping])
-
+                     callbacks=callbacks)
+    if player_path is not None:
+        player_model.save(player_path)
     return player_model, drone_model
 
 
@@ -403,9 +414,9 @@ def main():
         (player_x, player_y), (drone_x, drone_y), _ = generate_training_data(args.episodes, parallel=True)
         os.makedirs(os.path.dirname(args.train_data), exist_ok=True)
         np.savez(args.train_data, player_x=player_x, player_y=player_y, drone_x=drone_x, drone_y=drone_y)
-    model_player, model_drone = train_pretrained_models(player_x, player_y, drone_x, drone_y, args.epochs)
-    model_player.save(args.save_path + "player_hunter.keras")
-    model_drone.save(args.save_path + "drone_hunter.keras")
+    model_player, model_drone = train_pretrained_models(player_x, player_y, drone_x, drone_y, args.epochs,
+                                                        drone_path=args.save_path + "drone_hunter.keras", player_path=args.save_path + "player_hunter.keras")
+    return model_drone, model_player
 
 
 # --- Example Usage ---
