@@ -315,9 +315,7 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
                         print(f"\nError in episode {episode_id}: {e}")
             except concurrent.futures.TimeoutError:
                 print (f"\nTimeout occurred after {completed} episodes, stopping...")
-                # getting the results of the completed episodes
-
-
+                executor.shutdown(wait=False, cancel_futures=True)
         player_inputs = player_inputs[:completed-1]
         player_outputs = player_outputs[:completed-1]
         player_position = player_position[:completed-1]
