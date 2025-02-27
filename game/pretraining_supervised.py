@@ -11,7 +11,7 @@ import argparse
 from tensorflow.python.keras.utils.version_utils import callbacks
 from collections import deque
 
-from game.config import DRONE_NUMBER
+from config import DRONE_NUMBER
 from simulation import simulate_game_step_manual
 from level import new_level
 from models import create_player_hunter_model, create_drone_hunter_model
