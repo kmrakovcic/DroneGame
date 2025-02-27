@@ -153,7 +153,7 @@ def generate_episode(dt, max_time):
     while (t < max_time) and (not player_reached_exit) and (not player_caught):
         # Collect sensor data before update
         drone_sensors = [drone.get_sensors(player, drones, dungeon) for drone in drones]
-        player_sensors = player.get_sensors(dungeon, drones, goal)
+        player_sensors = player.get_sensors(dungeon, drones)
 
         # === PLAYER PATH FOLLOWING TO EXIT ===
         max_distance = PLAYER_SPEED * dt
