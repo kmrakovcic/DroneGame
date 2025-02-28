@@ -82,7 +82,7 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_cma/"
     import pandas as pd
     while running:
         step += 1
-        dt = clock.tick(30) / 1000.0  # Convert to seconds
+        dt = clock.tick(60) / 1000.0  # Convert to seconds
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):

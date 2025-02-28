@@ -287,7 +287,7 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
     drone_position = np.empty(num_episodes, dtype=object)
     dungeons = np.empty(num_episodes, dtype=object)
 
-    timeout_per_episode = 0.05  # Timeout per episode in seconds
+    timeout_per_episode = 0.035  # Timeout per episode in seconds
 
     if parallel:
         with concurrent.futures.ProcessPoolExecutor() as executor:
