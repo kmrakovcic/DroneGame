@@ -153,14 +153,14 @@ def get_sensor_at_angle(x, y, angle, dungeon, player_pos, drones_pos, exit_pos, 
             ent_x.append(dx)
             ent_y.append(dy)
             ent_rad.append(DRONE_RADIUS)
-            ent_type.append(0.25)
+            ent_type.append(0.5)
     if player_pos[0] != x and player_pos[1] != y:
         ent_x.append(player_pos[0])
         ent_y.append(player_pos[1])
         ent_rad.append(PLAYER_RADIUS)
-        ent_type.append(0.75)
+        ent_type.append(1)
     dist_e, type_e = sensor_check_entities(x, y, angle_rad, np.array(ent_x), np.array(ent_y), np.array(ent_rad), np.array(ent_type))
-    dist_exit, type_exit = sensor_check_exit(x, y, angle_rad, exit_pos[0], exit_pos[1]), 0.5
+    dist_exit, type_exit = sensor_check_exit(x, y, angle_rad, exit_pos[0], exit_pos[1]), -1
     if dist_exit is None:
         dist_exit = max_distance
         type_exit = 0
