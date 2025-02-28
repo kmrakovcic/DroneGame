@@ -4,7 +4,7 @@ import os
 # Disable GPU usage (or configure as needed)
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-ZOOM_IN_LVL = 3
+ZOOM_IN_LVL = 1
 # Screen and tile configuration
 TILE_SIZE = 16 * ZOOM_IN_LVL
 MAP_WIDTH = 30   # in tiles

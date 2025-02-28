@@ -121,22 +121,20 @@ def sensor_check_entities(x, y, angle, entities_x, entities_y, entities_radius, 
     :param entities_y: 
     :return: 
     """
-    angle *= -1
-    angles_to_entities = np.arctan2(entities_y - y, entities_x - x)
+    angles_to_entities = np.pi - np.arctan2((y - entities_y), (x - entities_x))
     distance_to_entities = np.sqrt(np.square(entities_x - x) + np.square(entities_y - y))
     paralax_angle = np.arctan2(entities_radius, distance_to_entities)
-    seen_mask = np.abs(angles_to_entities - angle) < paralax_angle
+    seen_mask = np.abs((angles_to_entities - angle) % (2*math.pi)) < paralax_angle
     if not np.any(seen_mask):
         return None, None
     else:
         return np.min(distance_to_entities[seen_mask]), entities_type[seen_mask][np.argmin(distance_to_entities[seen_mask])]
 
 def sensor_check_exit(x, y, angle, exit_x, exit_y):
-    angle *= -1
-    angle_to_exit = np.arctan2(exit_y - y, exit_x - x)
+    angle_to_exit = np.pi - np.arctan2(exit_y - y, exit_x - x)
     distance_to_exit = np.sqrt((exit_x - x) ** 2 + (exit_y - y) ** 2)
     paralax_angle = np.arctan2(TILE_SIZE, distance_to_exit)
-    if np.abs(angle_to_exit - angle) < paralax_angle:
+    if np.abs((angle_to_exit - angle) % (2*math.pi)) < paralax_angle:
         return distance_to_exit
     else:
         return None

@@ -351,9 +351,9 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
 # --- Pretrain the Models ---
 def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, batch_size=1024, drone_path=None,
                             player_path=None):
-    balance_drones = True
+    balance_drones = False
     if balance_drones:
-        drone_x_disassembled_masks = [np.any(drone_x[:, 8:16] == i, axis=0) for i in np.unique(drone_x[:, 8:16])]
+        drone_x_disassembled_masks = [np.any(drone_x[:, 8:16] == i, axis=-1) for i in np.unique(drone_x[:, 8:16])]
         drone_x_disassembled_min = np.min([np.sum(mask) for mask in drone_x_disassembled_masks])
         drone_x_disassembled_indices = [np.random.choice(np.where(mask)[0], drone_x_disassembled_min) for mask in drone_x_disassembled_masks]
         drone_x = np.concatenate([drone_x[indices] for indices in drone_x_disassembled_indices])

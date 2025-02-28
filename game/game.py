@@ -66,9 +66,9 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_cma/"
     pygame.init()
     infoObject = pygame.display.Info()
     screen_w, screen_h = infoObject.current_w, infoObject.current_h
-    #screen_w, screen_h = 600, 600
+    screen_w, screen_h = 600, 600
     screen = pygame.display.set_mode((screen_w, screen_h))
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN)
+    #screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN)
     pygame.display.set_caption("Drone Escape")
     clock = pygame.time.Clock()
 
