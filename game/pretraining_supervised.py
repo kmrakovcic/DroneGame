@@ -350,7 +350,7 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
 
 # --- Pretrain the Models ---
 def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, batch_size=1024, drone_path=None,
-                            player_path=None):
+                            player_path=None, template_path=None):
     balance_drones = False
     if balance_drones:
         drone_x_disassembled_masks = [np.any(drone_x[:, 8:16] == i, axis=-1) for i in np.unique(drone_x[:, 8:16])]
@@ -359,11 +359,24 @@ def train_pretrained_models(player_x, player_y, drone_x, drone_y, epochs=10, bat
         drone_x = np.concatenate([drone_x[indices] for indices in drone_x_disassembled_indices])
         drone_y = np.concatenate([drone_y[indices] for indices in drone_x_disassembled_indices])
     # Create models (assume these functions are defined in your models module).
-    player_model = create_player_hunter_model(player_x.shape[1])
-    drone_model = create_drone_hunter_model(drone_x.shape[1])
+    if template_path is not None:
+        if template_path[-1] != '/':
+            template_path += '/'
+        try:
+            player_model = tf.keras.models.load_model(template_path+"player_hunter_template.keras")
+            drone_model = tf.keras.models.load_model(template_path+"drone_hunter_template.keras")
+            fine_tune=True
+        except:
+            player_model = create_player_hunter_model(player_x.shape[1])
+            drone_model = create_drone_hunter_model(drone_x.shape[1])
+            fine_tune=False
+    else:
+        player_model = create_player_hunter_model(player_x.shape[1])
+        drone_model = create_drone_hunter_model(drone_x.shape[1])
+        fine_tune=False
 
-    player_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.01), loss='mse')
-    drone_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.01), loss='mse')
+    player_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001 if fine_tune else 0.01), loss='mse')
+    drone_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001 if fine_tune else 0.01), loss='mse')
     reduce_on_plateau = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=100)
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=80, restore_best_weights=True,
                                                       start_from_epoch=epochs // 2)
@@ -423,7 +436,8 @@ def main():
         np.savez(args.train_data, player_x=player_x, player_y=player_y, drone_x=drone_x, drone_y=drone_y)
     model_player, model_drone = train_pretrained_models(player_x, player_y, drone_x, drone_y, args.epochs,
                                                         drone_path=args.save_path + "drone_hunter.keras",
-                                                        player_path=args.save_path + "player_hunter.keras")
+                                                        player_path=args.save_path + "player_hunter.keras",
+                                                        template_path="../DATA/")
     return model_drone, model_player
 
 
