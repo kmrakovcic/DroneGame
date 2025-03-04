@@ -51,11 +51,12 @@ def astar(grid, start, goal):
                 path.append(current)
             path.reverse()
             return path
-
+        directions = np.array ([(-1, 0), (1, 0), (0, -1), (0, 1),  # Cardinal directions
+                           (-1, -1), (1, -1), (-1, 1), (1, 1)])  # Diagonal directions)
+        np.random.shuffle(directions)
         neighbors = [
             (current[0] + dx, current[1] + dy)
-            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1),  # Cardinal directions
-                           (-1, -1), (1, -1), (-1, 1), (1, 1)]  # Diagonal directions
+            for dx, dy in directions
         ]
 
         for neighbor in neighbors:
