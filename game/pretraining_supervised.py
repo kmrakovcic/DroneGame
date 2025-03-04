@@ -396,6 +396,7 @@ def main():
     parser.add_argument('--epochs', type=int, default=200)
     parser.add_argument('--save_path', type=str, default="../models_cma/")
     parser.add_argument('--train_data', type=str, default="../DATA/training.npz")
+    parser.add_argument('--template_path', type=str, default="")
     args = parser.parse_args()
     if args.save_path[-1] != '/':
         args.save_path += '/'
@@ -405,10 +406,12 @@ def main():
         (player_x, player_y), (drone_x, drone_y), _ = generate_training_data(args.episodes, parallel=True)
         os.makedirs(os.path.dirname(args.train_data), exist_ok=True)
         np.savez(args.train_data, player_x=player_x, player_y=player_y, drone_x=drone_x, drone_y=drone_y)
+    if not os.exists(args.template_path):
+        args.template_path = None
     model_player, model_drone = train_pretrained_models(player_x, player_y, drone_x, drone_y, args.epochs,
                                                         drone_path=args.save_path + "drone_hunter.keras",
                                                         player_path=args.save_path + "player_hunter.keras",
-                                                        template_path="../DATA/")
+                                                        template_path=args.template_path)
     return model_drone, model_player
 
 
