@@ -406,7 +406,7 @@ def main():
         (player_x, player_y), (drone_x, drone_y), _ = generate_training_data(args.episodes, parallel=True)
         os.makedirs(os.path.dirname(args.train_data), exist_ok=True)
         np.savez(args.train_data, player_x=player_x, player_y=player_y, drone_x=drone_x, drone_y=drone_y)
-    if not os.exists(args.template_path):
+    if not os.path.exists(args.template_path):
         args.template_path = None
     model_player, model_drone = train_pretrained_models(player_x, player_y, drone_x, drone_y, args.epochs,
                                                         drone_path=args.save_path + "drone_hunter.keras",
