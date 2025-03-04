@@ -208,18 +208,24 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_cma/"
 
     pygame.quit()
 
-
-def run_automatic_mode(max_time=120, automatic_next_episode=True):
+def regenerate_level_automatic_mode(max_time=60):
     from pretraining_supervised import generate_episode, plot_paths_dungeon
     player_sensors, player_acceration, drones_sensors, drones_acceration, (
-    dungeon, exit_rect, player_spawn, drone_spawn), drones_positions, player_positions = generate_episode(0.033,
-                                                                                                          max_time)
-    #plot_paths_dungeon(np.kron(np.array(dungeon, dtype=np.int32), np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32)), player_positions, drones_positions)
+        dungeon, exit_rect, player_spawn, drone_spawn), drones_positions, player_positions = generate_episode(0.033,
+                                                                                                              max_time)
     player = Player(player_spawn[0], player_spawn[1])
     drones = [Drone(drone_spawn[i][0], drone_spawn[i][1]) for i in range(len(drones_positions))]
+    for drone in drones:
+        drone.spawn = drone_spawn
     player.spawn = player_spawn
-    for i, drone in enumerate(drones):
-        drone.spawn = drone_spawn[i]
+    player.level_exit = (exit_rect.x + TILE_SIZE / 2, exit_rect.y + TILE_SIZE / 2)
+    #plot_paths_dungeon(np.kron(dungeon, np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32)), player_positions, drones_positions)
+    return player_sensors, player_acceration, drones_sensors, drones_acceration, (
+    dungeon, exit_rect, player_spawn, drone_spawn), drones_positions, player_positions, player, drones
+
+def run_automatic_mode(max_time=120):
+    player_sensors, player_acceration, drones_sensors, drones_acceration, (
+    dungeon, exit_rect, player_spawn, drone_spawn), drones_positions, player_positions, player, drones = regenerate_level_automatic_mode(max_time=max_time)
     pygame.init()
     infoObject = pygame.display.Info()
     screen_w, screen_h = infoObject.current_w, infoObject.current_h
@@ -231,34 +237,24 @@ def run_automatic_mode(max_time=120, automatic_next_episode=True):
 
     # Camera Offsets
     camera_x, camera_y = player.x - SCREEN_WIDTH // 2, player.y - SCREEN_HEIGHT // 2
-    step = -1
+    step = 0
     running = True
     while running:
-        if step >= len(player_acceration) - 5:
-            print (stop_pls)
-            step = - 1
-            if automatic_next_episode:
-                player_sensors, player_acceration, drones_sensors, drones_acceration, (
-                    dungeon, exit_rect, player_spawn, drone_spawn), drones_positions, player_positions = generate_episode(
-                    0.033, max_time)
-            player = Player(player_spawn[0], player_spawn[1])
-            drones = [Drone(drone_spawn[i][0], drone_spawn[i][1]) for i in range(len(drones_positions))]
-            player.spawn = player_spawn
-            for i, drone in enumerate(drones):
-                drone.spawn = drone_spawn[i]
-
-        step += 1
+        if step >= len(player_acceration) - 2:
+            step = 0
+            player_sensors, player_acceration, drones_sensors, drones_acceration, (
+                dungeon, exit_rect, player_spawn, drone_spawn), drones_positions, player_positions, player, drones = regenerate_level_automatic_mode(max_time=max_time)
         dt = clock.tick(30) / 1000.0  # Convert to seconds
+        dt = 0.033
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                 running = False
-
         player.update_manual_velocity(player_acceration[step, 0], player_acceration[step, 1], dt, dungeon)
-        for i in range(len(drones)):
-            drones[i].update_manual_acceleration(drones_acceration[step * len(drones) + i, 0],
-                                                 drones_acceration[step * len(drones) + i, 1], dt, dungeon, player,
-                                                 drones)
+        for i, drone in enumerate(drones):
+            ax = drones_acceration[step * len(drones) + i, 0]
+            ay = drones_acceration[step * len(drones) + i, 1]
+            drone.update_manual_acceleration(ax, ay, dt, dungeon, player, drones)
 
         # Adjust Camera Offset to keep player centered, but fix to the screen edges if player moves to the edge
         if screen_w < MAP_WIDTH * TILE_SIZE:
@@ -282,34 +278,6 @@ def run_automatic_mode(max_time=120, automatic_next_episode=True):
             camera_y = max(0, min(camera_y, max_camera_y))
         else:
             camera_y = MAP_HEIGHT * TILE_SIZE // 2 - screen_h // 2
-
-        # Check if player reached the exit
-        if exit_rect.collidepoint(float(player.x), float(player.y)):
-            if automatic_next_episode:
-                player_sensors, player_acceration, drones_sensors, drones_acceration, (
-                    dungeon, exit_rect, player_spawn, drone_spawn), drones_positions, player_positions = generate_episode(
-                    0.033, max_time)
-            player = Player(player_spawn[0], player_spawn[1])
-            drones = [Drone(drone_spawn[i][0], drone_spawn[i][1]) for i in range(len(drones_positions))]
-            player.spawn = player_spawn
-            step = 0
-            for i, drone in enumerate(drones):
-                drone.spawn = drone_spawn[i]
-
-        # Check if player is caught
-        for drone in drones:
-            if distance((player.x, player.y), (drone.x, drone.y)) < (PLAYER_RADIUS + DRONE_RADIUS):
-                if automatic_next_episode:
-                    player_sensors, player_acceration, drones_sensors, drones_acceration, (
-                        dungeon, exit_rect, player_spawn,
-                        drone_spawn), drones_positions, player_positions = generate_episode(0.033,
-                                                                                            max_time)
-                player = Player(player_spawn[0], player_spawn[1])
-                drones = [Drone(drone_spawn[i][0], drone_spawn[i][1]) for i in range(len(drones_positions))]
-                player.spawn = player_spawn
-                step = 0
-                for i, drone in enumerate(drones):
-                    drone.spawn = drone_spawn[i]
 
         # Draw everything relative to camera position
         screen.fill((0, 0, 0))
@@ -349,8 +317,7 @@ def run_automatic_mode(max_time=120, automatic_next_episode=True):
             if 0 <= drone_x < screen_w and 0 <= drone_y < screen_h:
                 pygame.draw.circle(screen, COLOR_DRONE, (drone_x, drone_y), DRONE_RADIUS)
         pygame.display.flip()
-        print ("x:", player.x, player_positions[step][0], player.vx, player_acceration[step, 0]*dt* 500,
-               "\ny:", player.y, player_positions[step][1], player.vy, player_acceration[step, 1]*dt* 500)
+        step += 1
 
     pygame.quit()
 

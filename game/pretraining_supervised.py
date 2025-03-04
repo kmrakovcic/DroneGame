@@ -7,6 +7,7 @@ import random
 import tensorflow as tf
 import concurrent.futures
 import argparse
+import heapq
 
 from tensorflow.python.keras.utils.version_utils import callbacks
 from collections import deque
@@ -19,17 +20,17 @@ from config import TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT
     PLAYER_RADIUS, DRONE_RADIUS
 
 
-# --- Simple A* Implementation ---
 def astar(grid, start, goal):
     """
-    A* pathfinding on a 2D grid.
+    A* pathfinding with corner clipping prevention.
     grid: 2D numpy array (1 for free, 0 for wall)
     start: (row, col)
     goal: (row, col)
     Returns a list of (row, col) from start to goal or None if no path.
     """
     rows, cols = grid.shape
-    open_set = {start}
+    open_set = []
+    heapq.heappush(open_set, (0, start))
     came_from = {}
     g_score = {start: 0}
 
@@ -40,7 +41,8 @@ def astar(grid, start, goal):
     f_score = {start: h(start)}
 
     while open_set:
-        current = min(open_set, key=lambda c: f_score.get(c, float('inf')))
+        _, current = heapq.heappop(open_set)
+
         if current == goal:
             # Reconstruct path:
             path = [current]
@@ -49,17 +51,37 @@ def astar(grid, start, goal):
                 path.append(current)
             path.reverse()
             return path
-        open_set.remove(current)
-        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:  # 4-connected grid
-            neighbor = (current[0] + dr, current[1] + dc)
-            if 0 <= neighbor[0] < rows and 0 <= neighbor[1] < cols and grid[neighbor[0], neighbor[1]] == 1:
-                tentative_g = g_score[current] + 1  # assume cost 1 for each move
-                if tentative_g < g_score.get(neighbor, float('inf')):
-                    came_from[neighbor] = current
-                    g_score[neighbor] = tentative_g
-                    f_score[neighbor] = tentative_g + h(neighbor)
-                    open_set.add(neighbor)
-    return None  # no path found
+
+        neighbors = [
+            (current[0] + dx, current[1] + dy)
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1),  # Cardinal directions
+                           (-1, -1), (1, -1), (-1, 1), (1, 1)]  # Diagonal directions
+        ]
+
+        for neighbor in neighbors:
+            r, c = neighbor
+
+            # Check boundaries
+            if not (0 <= r < rows and 0 <= c < cols):
+                continue
+            if grid[r, c] == 0:  # Wall detected
+                continue
+
+            # Prevent diagonal corner clipping
+            if abs(r - current[0]) == 1 and abs(c - current[1]) == 1:
+                if grid[current[0], c] == 0 or grid[r, current[1]] == 0:
+                    continue  # Block diagonal move if a wall is in the way
+
+            tentative_g = g_score[current] + math.hypot(r - current[0], c - current[1])
+
+            if tentative_g < g_score.get(neighbor, float('inf')):
+                came_from[neighbor] = current
+                g_score[neighbor] = tentative_g
+                f_score[neighbor] = tentative_g + h(neighbor)
+                heapq.heappush(open_set, (f_score[neighbor], neighbor))
+
+    return None  # No path found
+
 
 
 def interpolate_line(start, end):
@@ -395,6 +417,6 @@ if __name__ == "__main__":
     #player_x, player_y, drone_x, drone_y = np.load("../DATA/training.npz", allow_pickle=True).values()
     #print ((drone_x[:, 8:16]==0.75).sum())
 
-    #main()
-    __, __, (player_pos, drone_pos, dungeons) = generate_training_data(num_episodes=1, parallel=True)
-    plot_paths_dungeon(dungeons[0], player_pos[0], drone_pos[0])
+    main()
+    #__, __, (player_pos, drone_pos, dungeons) = generate_training_data(num_episodes=1, parallel=True)
+    #plot_paths_dungeon(dungeons[0], player_pos[0], drone_pos[0])
