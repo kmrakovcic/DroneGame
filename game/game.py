@@ -209,5 +209,151 @@ def run_manual_mode(USE_PLAYER_NN=True, USE_DRONE_NN=True, path="../models_cma/"
     pygame.quit()
 
 
+def run_automatic_mode(max_time=120, automatic_next_episode=True):
+    from pretraining_supervised import generate_episode, plot_paths_dungeon
+    player_sensors, player_acceration, drones_sensors, drones_acceration, (
+    dungeon, exit_rect, player_spawn, drone_spawn), drones_positions, player_positions = generate_episode(0.033,
+                                                                                                          max_time)
+    #plot_paths_dungeon(np.kron(np.array(dungeon, dtype=np.int32), np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32)), player_positions, drones_positions)
+    player = Player(player_spawn[0], player_spawn[1])
+    drones = [Drone(drone_spawn[i][0], drone_spawn[i][1]) for i in range(len(drones_positions))]
+    player.spawn = player_spawn
+    for i, drone in enumerate(drones):
+        drone.spawn = drone_spawn[i]
+    pygame.init()
+    infoObject = pygame.display.Info()
+    screen_w, screen_h = infoObject.current_w, infoObject.current_h
+    screen_w, screen_h = 600, 600
+    screen = pygame.display.set_mode((screen_w, screen_h))
+    # screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN)
+    pygame.display.set_caption("Drone Escape")
+    clock = pygame.time.Clock()
+
+    # Camera Offsets
+    camera_x, camera_y = player.x - SCREEN_WIDTH // 2, player.y - SCREEN_HEIGHT // 2
+    step = -1
+    running = True
+    while running:
+        if step >= len(player_acceration) - 5:
+            print (stop_pls)
+            step = - 1
+            if automatic_next_episode:
+                player_sensors, player_acceration, drones_sensors, drones_acceration, (
+                    dungeon, exit_rect, player_spawn, drone_spawn), drones_positions, player_positions = generate_episode(
+                    0.033, max_time)
+            player = Player(player_spawn[0], player_spawn[1])
+            drones = [Drone(drone_spawn[i][0], drone_spawn[i][1]) for i in range(len(drones_positions))]
+            player.spawn = player_spawn
+            for i, drone in enumerate(drones):
+                drone.spawn = drone_spawn[i]
+
+        step += 1
+        dt = clock.tick(30) / 1000.0  # Convert to seconds
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                running = False
+
+        player.update_manual_velocity(player_acceration[step, 0], player_acceration[step, 1], dt, dungeon)
+        for i in range(len(drones)):
+            drones[i].update_manual_acceleration(drones_acceration[step * len(drones) + i, 0],
+                                                 drones_acceration[step * len(drones) + i, 1], dt, dungeon, player,
+                                                 drones)
+
+        # Adjust Camera Offset to keep player centered, but fix to the screen edges if player moves to the edge
+        if screen_w < MAP_WIDTH * TILE_SIZE:
+            camera_x = player.x - screen_w // 2
+            max_camera_x = MAP_WIDTH * TILE_SIZE - screen_w
+            if camera_x < 0:
+                camera_x = 0
+            elif camera_x > max_camera_x:
+                camera_x = max_camera_x
+            camera_x = max(0, min(camera_x, max_camera_x))
+        else:
+            camera_x = MAP_WIDTH * TILE_SIZE // 2 - screen_w // 2
+
+        if screen_h < MAP_HEIGHT * TILE_SIZE:
+            camera_y = player.y - screen_h // 2
+            max_camera_y = MAP_HEIGHT * TILE_SIZE - screen_h
+            if camera_y < 0:
+                camera_y = 0
+            elif camera_y > max_camera_y:
+                camera_y = max_camera_y
+            camera_y = max(0, min(camera_y, max_camera_y))
+        else:
+            camera_y = MAP_HEIGHT * TILE_SIZE // 2 - screen_h // 2
+
+        # Check if player reached the exit
+        if exit_rect.collidepoint(float(player.x), float(player.y)):
+            if automatic_next_episode:
+                player_sensors, player_acceration, drones_sensors, drones_acceration, (
+                    dungeon, exit_rect, player_spawn, drone_spawn), drones_positions, player_positions = generate_episode(
+                    0.033, max_time)
+            player = Player(player_spawn[0], player_spawn[1])
+            drones = [Drone(drone_spawn[i][0], drone_spawn[i][1]) for i in range(len(drones_positions))]
+            player.spawn = player_spawn
+            step = 0
+            for i, drone in enumerate(drones):
+                drone.spawn = drone_spawn[i]
+
+        # Check if player is caught
+        for drone in drones:
+            if distance((player.x, player.y), (drone.x, drone.y)) < (PLAYER_RADIUS + DRONE_RADIUS):
+                if automatic_next_episode:
+                    player_sensors, player_acceration, drones_sensors, drones_acceration, (
+                        dungeon, exit_rect, player_spawn,
+                        drone_spawn), drones_positions, player_positions = generate_episode(0.033,
+                                                                                            max_time)
+                player = Player(player_spawn[0], player_spawn[1])
+                drones = [Drone(drone_spawn[i][0], drone_spawn[i][1]) for i in range(len(drones_positions))]
+                player.spawn = player_spawn
+                step = 0
+                for i, drone in enumerate(drones):
+                    drone.spawn = drone_spawn[i]
+
+        # Draw everything relative to camera position
+        screen.fill((0, 0, 0))
+        for ty in range(int(camera_y // TILE_SIZE - 1), int(camera_y // TILE_SIZE + screen_h // TILE_SIZE + 1), 1):
+            for tx in range(int(camera_x // TILE_SIZE - 1), int(camera_x // TILE_SIZE + screen_w // TILE_SIZE + 1), 1):
+                if tx < 0 or tx >= MAP_WIDTH or ty < 0 or ty >= MAP_HEIGHT:
+                    color = COLOR_WALL
+                else:
+                    color = COLOR_FLOOR if dungeon[ty, tx] == 1 else COLOR_WALL
+                tile_x = tx * TILE_SIZE - camera_x
+                tile_y = ty * TILE_SIZE - camera_y
+                pygame.draw.rect(screen, color, (tile_x, tile_y, TILE_SIZE, TILE_SIZE))
+
+        # Draw Exit
+        if 0 <= exit_rect.x - camera_x < screen_w and 0 <= exit_rect.y - camera_y < screen_h:
+            pygame.draw.rect(screen, COLOR_EXIT,
+                             (exit_rect.x - camera_x, exit_rect.y - camera_y, TILE_SIZE, TILE_SIZE))
+        else:
+            draw_exit_arrow(screen, camera_x + screen_w // 2, camera_y + screen_h // 2,
+                            exit_rect.x + TILE_SIZE / 2, exit_rect.y + TILE_SIZE / 2, screen_w - 100, screen_h - 100)
+        # Draw Start
+        if 0 <= player_spawn[0] - TILE_SIZE // 2 - camera_x < screen_w and 0 <= player_spawn[
+            1] - TILE_SIZE // 2 - camera_y < screen_h:
+            pygame.draw.rect(screen, COLOR_START,
+                             (player_spawn[0] - TILE_SIZE // 2 - camera_x, player_spawn[1] - TILE_SIZE // 2 - camera_y,
+                              TILE_SIZE, TILE_SIZE))
+
+        # Draw Player (always at the center of screen)
+        if 0 <= player.x - camera_x < screen_w and 0 <= player.y - camera_y < screen_h:
+            pygame.draw.circle(screen, COLOR_PLAYER,
+                               (int(player.x - camera_x), int(player.y - camera_y)), PLAYER_RADIUS)
+
+        # Draw Drones
+        for drone in drones:
+            drone_x = int(drone.x - camera_x)
+            drone_y = int(drone.y - camera_y)
+            if 0 <= drone_x < screen_w and 0 <= drone_y < screen_h:
+                pygame.draw.circle(screen, COLOR_DRONE, (drone_x, drone_y), DRONE_RADIUS)
+        pygame.display.flip()
+        print ("x:", player.x, player_positions[step][0], player.vx, player_acceration[step, 0]*dt* 500,
+               "\ny:", player.y, player_positions[step][1], player.vy, player_acceration[step, 1]*dt* 500)
+
+    pygame.quit()
+
+
 if __name__ == "__main__":
-    run_manual_mode(False, False)
+    run_automatic_mode()

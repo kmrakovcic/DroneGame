@@ -219,66 +219,12 @@ def generate_episode(dt, max_time):
         player_outputs.append(player_input)
         player_inputs.append(player_sensors)
         t += dt
-    dungeon_mask = np.kron(dungeon, np.ones((TILE_SIZE, TILE_SIZE)))
-    return np.array(player_inputs, dtype=np.float16), np.array(player_outputs, dtype=np.float16), \
-        np.array(drone_inputs, dtype=np.float16), np.array(drone_outputs,
-                                                           dtype=np.float16), dungeon_mask, drones_positions, player_positions
-
-
-def generate_training_data1(num_episodes=50, dt=0.033, max_time=60.0, parallel=False):
-    """Runs multiple simulation episodes in parallel to collect training data."""
-    player_inputs = []
-    player_outputs = []
-    player_position = []
-    drone_inputs = []
-    drone_outputs = []
-    drone_position = []
-    dungeons = []
-
-    if parallel:
-        restarts = 0
-        while True:
-            try:
-                with concurrent.futures.ProcessPoolExecutor() as executor:
-                    results = list(executor.map(generate_episode, [dt] * num_episodes, [max_time] * num_episodes,
-                                                timeout=60 * num_episodes))
-                    break
-
-            except concurrent.futures.TimeoutError:
-                if restarts <= 5:
-                    restarts += 1
-                    print(f"Timeout occurred ! Restarting the simulation...")
-                else:
-                    break
-
-        for p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos in results:
-            player_inputs.append(p_in)
-            player_outputs.append(p_out)
-            player_position.append(p_pos)
-            drone_inputs.append(d_in)
-            drone_outputs.append(d_out)
-            drone_position.append(d_pos)
-            dungeons.append(dungeon)
-        return (np.concatenate(player_inputs), np.concatenate(player_outputs)), (
-            np.concatenate(drone_inputs), np.concatenate(drone_outputs)), (player_position, drone_position, dungeons)
-    else:
-        for episode in range(num_episodes):
-            p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos = generate_episode(dt, max_time)
-            player_inputs.append(p_in)
-            player_outputs.append(p_out)
-            drone_inputs.append(d_in)
-            drone_outputs.append(d_out)
-            player_position.append(p_pos)
-            drone_position.append(d_pos)
-            dungeons.append(dungeon)
-        return (np.concatenate(player_inputs), np.concatenate(player_outputs)), (
-            np.concatenate(drone_inputs), np.concatenate(drone_outputs)), (player_position, drone_position, dungeons)
+    return (np.array(player_inputs, dtype=np.float32), np.array(player_outputs, dtype=np.float32), np.array(drone_inputs, dtype=np.float32), np.array(drone_outputs, dtype=np.float32), (dungeon, exit_rect, [player.spawn[0], player.spawn[1]], [[drone.spawn[0], drone.spawn[1]] for drone in drones]), drones_positions, player_positions)
 
 
 def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=True):
     """Runs multiple simulation episodes in parallel to collect training data."""
 
-    #p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos = generate_episode(dt, max_time)
     player_inputs = np.empty(num_episodes, dtype=object)
     player_outputs = np.empty(num_episodes, dtype=object)
     player_position = np.empty(num_episodes, dtype=object)
@@ -288,7 +234,8 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
     dungeons = np.empty(num_episodes, dtype=object)
 
     timeout_per_episode = 0.035  # Timeout per episode in seconds
-
+    if parallel and num_episodes == 1:
+        parallel = False  # Force parallel execution for a single episode
     if parallel:
         with concurrent.futures.ProcessPoolExecutor() as executor:
             futures = {executor.submit(generate_episode, dt, max_time): i + 1 for i in range(num_episodes)}
@@ -297,7 +244,8 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
                 for future in concurrent.futures.as_completed(futures, timeout=num_episodes * timeout_per_episode):
                     episode_id = futures[future]
                     try:
-                        p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos = future.result(timeout=timeout_per_episode)
+                        p_in, p_out, d_in, d_out, (dungeon, exit_rect, player_spawn, drones_spawn), d_pos, p_pos = future.result(timeout=timeout_per_episode)
+                        dungeon = np.kron(np.array(dungeon, dtype=np.int32), np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32))
                         player_inputs[completed] = p_in
                         player_outputs[completed] = p_out
                         player_position[completed] = p_pos
@@ -316,19 +264,20 @@ def generate_training_data(num_episodes=50, dt=0.033, max_time=60.0, parallel=Tr
             except concurrent.futures.TimeoutError:
                 print(f"\nTimeout occurred after {completed} episodes, stopping...")
                 executor.shutdown(wait=False, cancel_futures=True)
-        player_inputs = player_inputs[:completed - 1]
-        player_outputs = player_outputs[:completed - 1]
-        player_position = player_position[:completed - 1]
-        drone_inputs = drone_inputs[:completed - 1]
-        drone_outputs = drone_outputs[:completed - 1]
-        drone_position = drone_position[:completed - 1]
-        dungeons = dungeons[:completed - 1]
+        player_inputs = player_inputs[:completed ]
+        player_outputs = player_outputs[:completed]
+        player_position = player_position[:completed ]
+        drone_inputs = drone_inputs[:completed]
+        drone_outputs = drone_outputs[:completed]
+        drone_position = drone_position[:completed]
+        dungeons = dungeons[:completed]
         print(f"\n{completed} episodes completed")
 
     else:
         for episode in range(1, num_episodes + 1):
             try:
-                p_in, p_out, d_in, d_out, dungeon, d_pos, p_pos = generate_episode(dt, max_time)
+                p_in, p_out, d_in, d_out, (dungeon, exit_rect, player_spawn, drones_spawn), d_pos, p_pos = generate_episode(dt, max_time)
+                dungeon = np.kron(np.array(dungeon, dtype=np.int32), np.ones((TILE_SIZE, TILE_SIZE), dtype=np.int32))
                 player_inputs[episode - 1] = p_in
                 player_outputs[episode - 1] = p_out
                 player_position[episode - 1] = p_pos
@@ -446,6 +395,6 @@ if __name__ == "__main__":
     #player_x, player_y, drone_x, drone_y = np.load("../DATA/training.npz", allow_pickle=True).values()
     #print ((drone_x[:, 8:16]==0.75).sum())
 
-    main()
-    #__, __, (player_pos, drone_pos, dungeons) = generate_training_data(num_episodes=50, parallel=True)
-    #plot_paths_dungeon(dungeons[0], player_pos[0], drone_pos[0])
+    #main()
+    __, __, (player_pos, drone_pos, dungeons) = generate_training_data(num_episodes=1, parallel=True)
+    plot_paths_dungeon(dungeons[0], player_pos[0], drone_pos[0])
