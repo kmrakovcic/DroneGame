@@ -104,6 +104,6 @@ def get_drone_sensor_vector(x, y, vx, vy, angles, dungeon, player_pos, drones_po
         distance_norm = distance / max_len
         sensor_vector[i] = distance_norm
         sensor_vector[i + len(angles)] = type
-    sensor_vector[-6:] = np.array([x / SCREEN_WIDTH, y / SCREEN_HEIGHT, vx / DRONE_SPEED, vy / DRONE_SPEED,
-                                      player_pos[0] / SCREEN_WIDTH, player_pos[1] / SCREEN_HEIGHT], dtype=np.float32)
+    sensor_vector[-6:] = np.array([x, y, vx / DRONE_SPEED, vy / DRONE_SPEED,
+                                      player_pos[0], player_pos[1]], dtype=np.float32)
     return sensor_vector
